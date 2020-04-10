@@ -188,6 +188,72 @@ public abstract class Publisher<T> {
     }
 
     /**
+     * Each element of this {@link Publisher} is mapped into a {@link Publisher} (potentially of a different type) and
+     * flatten all signals emitted from each mapped {@link Publisher} into the returned {@link Publisher}.
+     * <pre>{@code
+     *     ExecutorService e = ...;
+     *     List<Future<List<R>>> futures = ...; // assume this is thread safe
+     *     for (T t : resultOfThisPublisher()) {
+     *         // Note that flatMap process results in parallel.
+     *         futures.add(e.submit(() -> {
+     *             return mapper.apply(t); // Asynchronous result is flatten into a value by this operator.
+     *         }));
+     *     }
+     *     List<R> results = new ArrayList<>(futures.size());
+     *     // This is an approximation, this operator does not provide any ordering guarantees for the results.
+     *     for (Future<List<R>> future : futures) {
+     *         List<R> rList = future.get(); // Throws if the processing for this item failed.
+     *         results.addAll(rList);
+     *     }
+     *     return results;
+     * }</pre>
+     * @param mapper Convert each item emitted by this {@link Publisher} into another {@link Publisher}.
+     * each mapped {@link Publisher}.
+     * @param <R> The type of mapped {@link Publisher}.
+     * @return A new {@link Publisher} which flattens the emissions from all mapped {@link Publisher}s.
+     * @see <a href="http://reactivex.io/documentation/operators/flatmap.html">ReactiveX flatMap operator.</a>
+     */
+    public final <R> Publisher<R> flatMapMerge(Function<? super T, ? extends Publisher<? extends R>> mapper) {
+        return flatMapMerge(mapper, false, 16, 64);
+    }
+
+    /**
+     * Each element of this {@link Publisher} is mapped into a {@link Publisher} (potentially of a different type) and
+     * flatten all signals emitted from each mapped {@link Publisher} into the returned {@link Publisher}.
+     * <pre>{@code
+     *     ExecutorService e = ...;
+     *     List<Future<List<R>>> futures = ...; // assume this is thread safe
+     *     for (T t : resultOfThisPublisher()) {
+     *         // Note that flatMap process results in parallel.
+     *         futures.add(e.submit(() -> {
+     *             return mapper.apply(t); // Asynchronous result is flatten into a value by this operator.
+     *         }));
+     *     }
+     *     List<R> results = new ArrayList<>(futures.size());
+     *     // This is an approximation, this operator does not provide any ordering guarantees for the results.
+     *     for (Future<List<R>> future : futures) {
+     *         List<R> rList = future.get(); // Throws if the processing for this item failed.
+     *         results.addAll(rList);
+     *     }
+     *     return results;
+     * }</pre>
+     * @param mapper Convert each item emitted by this {@link Publisher} into another {@link Publisher}.
+     * @param delayError {@code false} if the returned {@link Publisher} should fail as soon as any of the mapped
+     * {@link Publisher}s fail. {@code true} to wait until this {@link Publisher} terminates to emit any failures from
+     * the mapped {@link Publisher}s.
+     * @param maxConcurrency maximum amount of outstanding upstream {@link Subscription#request(long) demand}.
+     * @param maxMappedDemandHint hint for the maximum amount of {@link Subscription#request(long) demand} for
+     * each mapped {@link Publisher}.
+     * @param <R> The type of mapped {@link Publisher}.
+     * @return A new {@link Publisher} which flattens the emissions from all mapped {@link Publisher}s.
+     * @see <a href="http://reactivex.io/documentation/operators/flatmap.html">ReactiveX flatMap operator.</a>
+     */
+    public final <R> Publisher<R> flatMapMerge(Function<? super T, ? extends Publisher<? extends R>> mapper,
+                                               boolean delayError, int maxConcurrency, int maxMappedDemandHint) {
+        return new PublisherFlatMapMerge<>(this, mapper, delayError, maxConcurrency, maxMappedDemandHint, executor);
+    }
+
+    /**
      * Turns every item emitted by this {@link Publisher} into a {@link Single} and emits the items emitted by each of
      * those {@link Single}s.
      * <p>

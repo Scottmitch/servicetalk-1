@@ -34,7 +34,7 @@ import static java.util.concurrent.TimeUnit.NANOSECONDS;
 
 /**
  * While netty's {@link DnsCache} can be called by any thread calling the {@link DnsNameResolver}, we ensure, in
- * {@link DefaultDnsServiceDiscoverer} that the resolver is only ever called on the event loop. This allows us to
+ * {@link DefaultDnsClient} that the resolver is only ever called on the event loop. This allows us to
  * not worry about multithreaded access in this class.
  */
 final class MinTtlCache implements DnsCache {

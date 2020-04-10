@@ -17,7 +17,8 @@ package io.servicetalk.http.netty;
 
 import io.servicetalk.client.api.ServiceDiscoverer;
 import io.servicetalk.client.api.ServiceDiscovererEvent;
-import io.servicetalk.dns.discovery.netty.DefaultDnsServiceDiscovererBuilder;
+import io.servicetalk.dns.discovery.netty.DefaultDnsClientBuilder;
+import io.servicetalk.dns.discovery.netty.DnsClient;
 import io.servicetalk.transport.api.ExecutionContext;
 import io.servicetalk.transport.api.HostAndPort;
 
@@ -32,35 +33,45 @@ import java.net.InetSocketAddress;
  * A lazily initialized singleton DNS {@link ServiceDiscoverer} using a default {@link ExecutionContext}, the lifecycle
  * of this instance shouldn't need to be managed by the user. Don't attempt to close the {@link ServiceDiscoverer}.
  */
-final class GlobalDnsServiceDiscoverer {
+final class GlobalDnsClient {
+    private static final Logger LOGGER = LoggerFactory.getLogger(GlobalDnsClient.class);
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(GlobalDnsServiceDiscoverer.class);
-
-    private GlobalDnsServiceDiscoverer() {
+    private GlobalDnsClient() {
         // No instances
     }
 
     /**
-     * Get the {@link GlobalDnsServiceDiscoverer}.
+     * Get the {@link ServiceDiscoverer} targeting fixed ports.
      *
      * @return the singleton instance
      */
     static ServiceDiscoverer<HostAndPort, InetSocketAddress,
-            ServiceDiscovererEvent<InetSocketAddress>> globalDnsServiceDiscoverer() {
-        return GlobalDnsServiceDiscovererInitializer.INSTANCE;
+            ServiceDiscovererEvent<InetSocketAddress>> globalDnsWithFixedPort() {
+        return GlobalDnsClientInitializer.HOST_PORT_SD;
     }
 
-    private static final class GlobalDnsServiceDiscovererInitializer {
+    /**
+     * Get the {@link ServiceDiscoverer} targeting SRV records.
+     *
+     * @return the singleton instance
+     */
+    static ServiceDiscoverer<String, InetSocketAddress,
+            ServiceDiscovererEvent<InetSocketAddress>> globalDnsSrv() {
+        return GlobalDnsClientInitializer.SRV_SD;
+    }
 
+    private static final class GlobalDnsClientInitializer {
+        private static final DnsClient INSTANCE = new DefaultDnsClientBuilder().build();
         static final ServiceDiscoverer<HostAndPort, InetSocketAddress,
-                ServiceDiscovererEvent<InetSocketAddress>> INSTANCE =
-                new DefaultDnsServiceDiscovererBuilder().build();
+                ServiceDiscovererEvent<InetSocketAddress>> HOST_PORT_SD = DnsClient.asHostAndPortDiscoverer(INSTANCE);
+        static final ServiceDiscoverer<String, InetSocketAddress,
+                ServiceDiscovererEvent<InetSocketAddress>> SRV_SD = DnsClient.asSrvDiscoverer(INSTANCE);
 
         static {
-            LOGGER.debug("Initialized GlobalDnsServiceDiscoverer");
+            LOGGER.debug("Initialized GlobalDnsClientInitializer");
         }
 
-        private GlobalDnsServiceDiscovererInitializer() {
+        private GlobalDnsClientInitializer() {
             // No instances
         }
     }

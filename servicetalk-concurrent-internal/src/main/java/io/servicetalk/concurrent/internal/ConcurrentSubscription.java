@@ -19,10 +19,12 @@ import io.servicetalk.concurrent.Cancellable;
 import io.servicetalk.concurrent.PublisherSource.Subscription;
 
 import java.util.concurrent.atomic.AtomicLongFieldUpdater;
-import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
-import javax.annotation.Nullable;
 
+import static io.servicetalk.concurrent.internal.ConcurrentUtils.acquirePendingReentrantLock;
+import static io.servicetalk.concurrent.internal.ConcurrentUtils.releasePendingReentrantLock;
 import static io.servicetalk.concurrent.internal.SubscriberUtils.isRequestNValid;
+import static io.servicetalk.utils.internal.PlatformDependent.throwException;
+import static java.lang.Math.min;
 import static java.util.Objects.requireNonNull;
 
 /**
@@ -39,15 +41,16 @@ import static java.util.Objects.requireNonNull;
  * <a href="https://github.com/reactive-streams/reactive-streams-jvm/blob/v1.0.1/README.md#3.9">3.9</a> rule.
  */
 public class ConcurrentSubscription implements Subscription {
-    private static final AtomicLongFieldUpdater<ConcurrentSubscription> subscriptionRequestQueueUpdater =
-            AtomicLongFieldUpdater.newUpdater(ConcurrentSubscription.class, "subscriptionRequestQueue");
-    private static final AtomicReferenceFieldUpdater<ConcurrentSubscription, Thread> subscriptionLockOwnerUpdater =
-            AtomicReferenceFieldUpdater.newUpdater(ConcurrentSubscription.class, Thread.class, "subscriptionLockOwner");
+    private static final AtomicLongFieldUpdater<ConcurrentSubscription> pendingDemandUpdater =
+            AtomicLongFieldUpdater.newUpdater(ConcurrentSubscription.class, "pendingDemand");
+    private static final AtomicLongFieldUpdater<ConcurrentSubscription> subscriptionLockUpdater =
+            AtomicLongFieldUpdater.newUpdater(ConcurrentSubscription.class, "subscriptionLock");
+    private static final long CANCELLED = Long.MIN_VALUE;
+
     private final Subscription subscription;
+    private volatile long pendingDemand;
     @SuppressWarnings("unused")
-    private volatile long subscriptionRequestQueue;
-    @Nullable
-    private volatile Thread subscriptionLockOwner;
+    private volatile long subscriptionLock;
 
     /**
      * New instance.
@@ -71,74 +74,59 @@ public class ConcurrentSubscription implements Subscription {
     @Override
     public void request(long n) {
         if (!isRequestNValid(n)) {
-            // With invalid input we don't attempt to enforce concurrency and rely upon the subscription
-            // to enforce the specification rules [1].
-            // [1] https://github.com/reactive-streams/reactive-streams-jvm/blob/v1.0.1/README.md#3.9.
-            subscription.request(n);
-            return;
-        }
-        final Thread currentThread = Thread.currentThread();
-        if (currentThread == subscriptionLockOwner) {
-            subscriptionRequestQueueUpdater.accumulateAndGet(this, n,
-                    FlowControlUtils::addWithOverflowProtectionIfNotNegative);
-            return;
-        }
-        do {
-            if (!subscriptionLockOwnerUpdater.compareAndSet(this, null, currentThread)) {
-                // It is possible that we picked up a negative value from the queue on the previous iteration because
-                // we have been cancelled in another thread, and in this case we don't want to increment the queue and
-                // instead we just set to MIN_VALUE again and try to re-acquire the lock in case we raced again.
-                if (n < 0) {
-                    subscriptionRequestQueueUpdater.set(this, Long.MIN_VALUE);
-                } else {
-                    subscriptionRequestQueueUpdater.accumulateAndGet(this, n,
-                            FlowControlUtils::addWithOverflowProtectionIfNotNegative);
-                }
-                if (!subscriptionLockOwnerUpdater.compareAndSet(this, null, currentThread)) {
-                    return;
-                }
-                // We previously added our n contribution to the queue, but now that we have acquired the lock
-                // we are responsible for draining the queue.
-                n = subscriptionRequestQueueUpdater.getAndSet(this, 0);
-                if (n == 0) {
-                    // It is possible that the previous consumer has released the lock, and drained the queue before we
-                    // acquired the lock and drained the queue. This means we have acquired the lock, but the queue has
-                    // already been drained to 0. We should release the lock, try to drain the queue again, and then
-                    // loop to acquire the lock if there are elements to drain.
-                    subscriptionLockOwner = null;
-                    n = subscriptionRequestQueueUpdater.getAndSet(this, 0);
-                    if (n == 0) {
-                        return;
-                    } else {
-                        continue;
-                    }
+            pendingDemand = mapInvalidRequestN(n);
+        } else {
+            for (;;) {
+                final long prevPendingDemand = pendingDemand;
+                if (prevPendingDemand < 0 ||
+                        pendingDemandUpdater.compareAndSet(this, prevPendingDemand,
+                                prevPendingDemand + min(Long.MAX_VALUE - prevPendingDemand, n))) {
+                    break;
                 }
             }
-            if (n < 0) {
-                subscription.cancel();
-                return; // Don't set subscriptionLockOwner = 0 ... we don't want to request any more!
+        }
+        Throwable delayedCause = null;
+        for (;;) {
+            final long acquireId = acquirePendingReentrantLock(subscriptionLockUpdater, this);
+            if (acquireId == 0) {
+                break;
             }
+
             try {
-                subscription.request(n);
-            } finally {
-                subscriptionLockOwner = null;
+                final long prevPendingDemand = pendingDemandUpdater.getAndSet(this, 0);
+                if (prevPendingDemand == CANCELLED) {
+                    subscription.cancel();
+                } else {
+                    subscription.request(prevPendingDemand);
+                }
+            } catch (Throwable cause) {
+                if (delayedCause == null) {
+                    delayedCause = cause;
+                }
             }
-            n = subscriptionRequestQueueUpdater.getAndSet(this, 0);
-        } while (n != 0);
+
+            if (releasePendingReentrantLock(subscriptionLockUpdater, acquireId, this)) {
+                break;
+            }
+        }
+
+        if (delayedCause != null) {
+            throwException(delayedCause);
+        }
     }
 
     @Override
     public void cancel() {
-        // Set the queue to MIN_VALUE and this will be detected in request(n).
-        // We unconditionally set this value just in case there is re-entry with request(n) we will avoid calling
-        // the subscription's request(n) after cancel().
-        subscriptionRequestQueueUpdater.set(this, Long.MIN_VALUE);
-
-        final Thread currentThread = Thread.currentThread();
-        final Thread subscriptionLockOwner = this.subscriptionLockOwner;
-        if (subscriptionLockOwner == currentThread || subscriptionLockOwnerUpdater.compareAndSet(this, null,
-                currentThread)) {
+        pendingDemand = CANCELLED;
+        if (acquirePendingReentrantLock(subscriptionLockUpdater, this) != 0) {
             subscription.cancel();
+            // poison subscriptionLockUpdater
         }
+    }
+
+    private static long mapInvalidRequestN(long n) {
+        // We map zero to a negative number because zero could later be overwritten by a subsequent legit value of
+        // n, and we want to ensure the invalid use gets propagated.
+        return n == CANCELLED ? CANCELLED + 1 : n == 0 ? -1 : n;
     }
 }

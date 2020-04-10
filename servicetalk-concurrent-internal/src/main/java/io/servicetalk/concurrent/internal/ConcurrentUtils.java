@@ -19,6 +19,7 @@ import java.util.Collection;
 import java.util.Iterator;
 import java.util.Queue;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
+import java.util.concurrent.atomic.AtomicLongFieldUpdater;
 import java.util.function.Consumer;
 
 /**
@@ -31,47 +32,87 @@ public final class ConcurrentUtils {
 
     public static final int CONCURRENT_IDLE = 0;
     public static final int CONCURRENT_EMITTING = 1;
+    private static final int CONCURRENT_PENDING = 2;
 
     private ConcurrentUtils() {
         // No instances.
     }
 
     /**
-     * Drains the passed single-consumer {@link Queue} and ensures that it is empty before returning.
-     * This accounts for any additions to the {@link Queue} while drain is in progress.
-     * Multiple threads can call this method concurrently but only one thread will actively drain the {@link Queue}.
-     *
-     * @param queue {@link Queue} to drain.
-     * @param forEach {@link Consumer} for each item that is drained.
-     * @param drainActiveUpdater An {@link AtomicIntegerFieldUpdater} for an {@code int} that is used to guard against
-     * concurrent drains.
-     * @param flagOwner Holding instance for {@code drainActiveUpdater}.
-     * @param <T> Type of items stored in the {@link Queue}.
-     * @param <R> Type of the object holding the {@link int} referred by {@link AtomicIntegerFieldUpdater}.
-     * @return Number of items drained from the queue.
+     * Acquire a lock that is exclusively held with no re-entry, but attempts to acquire the lock while it is
+     * held can be detected by {@link #releasePendingLock(AtomicIntegerFieldUpdater, Object)}.
+     * @param lockUpdater The {@link AtomicIntegerFieldUpdater} used to control the lock state.
+     * @param owner The owner of the lock object.
+     * @param <T> The type of object that owns the lock.
+     * @return {@code true} if the lock was acquired, {@code false} otherwise.
      */
-    public static <T, R> long drainSingleConsumerQueue(final Queue<T> queue, final Consumer<T> forEach,
-                                                       final AtomicIntegerFieldUpdater<R> drainActiveUpdater,
-                                                       final R flagOwner) {
-        long drainedCount = 0;
-        do {
-            if (!drainActiveUpdater.compareAndSet(flagOwner, CONCURRENT_IDLE, CONCURRENT_EMITTING)) {
-                break;
-            }
-            try {
-                T t;
-                while ((t = queue.poll()) != null) {
-                    ++drainedCount;
-                    forEach.accept(t);
+    public static <T> boolean acquirePendingLock(AtomicIntegerFieldUpdater<T> lockUpdater, T owner) {
+        for (;;) {
+            final int prevEmitting = lockUpdater.get(owner);
+            if (prevEmitting == CONCURRENT_IDLE) {
+                if (lockUpdater.compareAndSet(owner, CONCURRENT_IDLE, CONCURRENT_EMITTING)) {
+                    return true;
                 }
-            } finally {
-                drainActiveUpdater.set(flagOwner, CONCURRENT_IDLE);
+            } else if (lockUpdater.compareAndSet(owner, prevEmitting, CONCURRENT_PENDING)) {
+                return false;
             }
-            // We need to loop around again and check if we can acquire the "drain lock" in case there was elements
-            // added after we finished draining the queue but before we released the "drain lock".
-        } while (!queue.isEmpty());
+        }
+    }
 
-        return drainedCount;
+    /**
+     * Release a lock that was previously acquired via {@link #acquirePendingLock(AtomicIntegerFieldUpdater, Object)}.
+     * @param lockUpdater The {@link AtomicIntegerFieldUpdater} used to control the lock state.
+     * @param owner The owner of the lock object.
+     * @param <T> The type of object that owns the lock.
+     * @return {@code true} if the lock was released, and no other attempts were made to acquire the lock while it
+     * was held. {@code false} if the lock was released but another attempt was made to acquire the lock before it was
+     * released.
+     */
+    public static <T> boolean releasePendingLock(AtomicIntegerFieldUpdater<T> lockUpdater, T owner) {
+        return lockUpdater.getAndSet(owner, CONCURRENT_IDLE) == CONCURRENT_EMITTING;
+    }
+
+    /**
+     * Acquire a lock that allows reentry and attempts to acquire the lock while it is
+     * held can be detected by {@link #releasePendingReentrantLock(AtomicLongFieldUpdater, long, Object)}.
+     * @param lockUpdater The {@link AtomicLongFieldUpdater} used to control the lock state.
+     * @param owner The owner of the lock object.
+     * @param <T> The type of object that owns the lock.
+     * @return {@code 0} if the acquire was unsuccessful, otherwise an identifier that must be passed to a subsequent
+     * call of {@link #releasePendingReentrantLock(AtomicLongFieldUpdater, long, Object)}.
+     */
+    public static <T> long acquirePendingReentrantLock(final AtomicLongFieldUpdater<T> lockUpdater, final T owner) {
+        final long threadId = Thread.currentThread().getId();
+        for (;;) {
+            final long prevThreadId = lockUpdater.get(owner);
+            if (prevThreadId == 0) {
+                if (lockUpdater.compareAndSet(owner, 0, threadId)) {
+                    return threadId;
+                }
+            } else if (prevThreadId == threadId || prevThreadId == -threadId) {
+                return -threadId;
+            } else if (lockUpdater.compareAndSet(owner, prevThreadId,
+                    prevThreadId > 0 ? -prevThreadId : prevThreadId)) {
+                return 0;
+            }
+        }
+    }
+
+    /**
+     * Release a lock that was previously acquired via
+     * {@link #acquirePendingReentrantLock(AtomicLongFieldUpdater, Object)}.
+     * @param lockUpdater The {@link AtomicLongFieldUpdater} used to control the lock state.
+     * @param acquireId The value returned from the previous call to
+     * {@link #acquirePendingReentrantLock(AtomicLongFieldUpdater, Object)}.
+     * @param owner The owner of the lock object.
+     * @param <T> The type of object that owns the lock.
+     * @return {@code true} if the lock was released, or this method call corresponds to a prior re-entrant call
+     * to {@link #acquirePendingReentrantLock(AtomicLongFieldUpdater, Object)}.
+     */
+    public static <T> boolean releasePendingReentrantLock(final AtomicLongFieldUpdater<T> lockUpdater,
+                                                          final long acquireId, final T owner) {
+        assert acquireId != 0;
+        return acquireId < 0 || lockUpdater.getAndSet(owner, 0) == acquireId;
     }
 
     /**

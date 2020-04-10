@@ -101,7 +101,7 @@ public class DelayedSubscriptionTest {
         delayedSubscription.request(100);
         delayedSubscription.request(0);
         delayedSubscription.delayedSubscription(s1);
-        verify(s1).request(MIN_VALUE);
+        verify(s1).request(MIN_VALUE + 1);
         verifyNoMoreInteractions(s1);
     }
 
