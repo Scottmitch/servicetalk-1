@@ -29,6 +29,11 @@ processResources {
   }
 }
 
+dependencies {
+  implementation "com.google.gradle:osdetector-gradle-plugin:$osdetectorPluginVersion"
+  implementation "commons-lang:commons-lang:$commonsLangVersion"
+}
+
 // Ignore Spotbugs for this module
 spotbugs {
  ignoreFailures = true

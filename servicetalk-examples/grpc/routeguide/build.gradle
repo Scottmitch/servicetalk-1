@@ -43,5 +43,5 @@ serviceTalkGrpc {
 // The following setting must be omitted in users projects and is necessary here
 // only because we want to use the locally built version of the plugin
 afterEvaluate {
-  generateProto.dependsOn(":servicetalk-grpc-protoc:buildExecutable")
+  stGenerateTestProto.dependsOn(":servicetalk-grpc-protoc:buildExecutable")
 }

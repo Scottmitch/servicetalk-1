@@ -62,13 +62,17 @@ serviceTalkGrpc {
 // The following setting must be omitted in users projects and is necessary here
 // only because we want to use the locally built version of the plugin
 afterEvaluate {
-  generateTestProto.dependsOn(":servicetalk-grpc-protoc:buildExecutable")
+  stGenerateTestProto.dependsOn(":servicetalk-grpc-protoc:buildExecutable")
 }
 
 // Configure grpc-java as required by ProtocolCompatibilityTest
-def generatedBaseDir = "$projectDir/generated"
+String generatedBaseDir = "$buildDir/generated/source/proto"
+apply plugin: "com.google.protobuf"
 
 protobuf {
+  protoc {
+    artifact = "com.google.protobuf:protoc:$protobufVersion"
+  }
   plugins {
     grpc {
       artifact = "io.grpc:protoc-gen-grpc-java:$grpcVersion"
@@ -76,7 +80,6 @@ protobuf {
   }
   generateProtoTasks {
     configure(all()) {
-      project.tasks.ideaModule.dependsOn(it)
       plugins {
         grpc {}
       }
@@ -87,6 +90,6 @@ protobuf {
 
 idea {
   module {
-    testSourceDirs += files("$generatedBaseDir/source/proto/test/grpc")
+    testSourceDirs += files("$generatedBaseDir/test/grpc")
   }
 }
