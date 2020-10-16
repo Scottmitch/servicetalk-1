@@ -42,6 +42,7 @@ import static java.util.concurrent.atomic.AtomicIntegerFieldUpdater.newUpdater;
  */
 public final class LimitingConnectionFactoryFilter<ResolvedAddress, C extends ListenableAsyncCloseable>
         implements ConnectionFactoryFilter<ResolvedAddress, C> {
+    // todo: this class can't extend HttpExecutionStrategyInfluencer, it is in client.api
 
     private final ConnectionLimiter<ResolvedAddress, C> limiter;
 

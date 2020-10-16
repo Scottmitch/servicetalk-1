@@ -128,6 +128,8 @@ public final class DefaultHttpLoadBalancerFactory<ResolvedAddress>
             if (rawFactory instanceof HttpExecutionStrategyInfluencer) {
                 strategyInfluencer = (HttpExecutionStrategyInfluencer) rawFactory;
             } else if (rawFactory instanceof RoundRobinLoadBalancerFactory) {
+                // todo: RoundRobinLoadBalancerFactory is outside http package, so special code is required here
+                //       can we avoid this?
                 strategyInfluencer = strategy -> strategy; // RoundRobinLoadBalancer is non-blocking.
             } else {
                 // user provided load balancer assumed to be blocking unless it implements

@@ -17,6 +17,8 @@ package io.servicetalk.opentracing.http;
 
 import io.servicetalk.concurrent.api.Publisher;
 import io.servicetalk.concurrent.api.Single;
+import io.servicetalk.http.api.HttpExecutionStrategy;
+import io.servicetalk.http.api.HttpExecutionStrategyInfluencer;
 import io.servicetalk.http.api.HttpRequestMetaData;
 import io.servicetalk.http.api.HttpResponseMetaData;
 import io.servicetalk.http.api.HttpServiceContext;
@@ -51,7 +53,8 @@ import static io.opentracing.tag.Tags.SPAN_KIND_SERVER;
  * (e.g. {@link Publisher#afterFinally(Runnable)}) will execute after this filter invokes {@link Scope#close()} and
  * therefore will not see the {@link Span} for the current request/response.
  */
-public class TracingHttpServiceFilter extends AbstractTracingHttpFilter implements StreamingHttpServiceFilterFactory {
+public class TracingHttpServiceFilter extends AbstractTracingHttpFilter implements StreamingHttpServiceFilterFactory,
+                                                                                   HttpExecutionStrategyInfluencer {
 
     /**
      * Create a new instance.
@@ -114,6 +117,12 @@ public class TracingHttpServiceFilter extends AbstractTracingHttpFilter implemen
         Span span = spanBuilder.start();
         Scope scope = tracer.activateSpan(span);
         return new ServiceScopeTracker(scope, span, parentSpanContext);
+    }
+
+    @Override
+    public HttpExecutionStrategy influenceStrategy(final HttpExecutionStrategy strategy) {
+        // No influence since we do not block.
+        return strategy;
     }
 
     private final class ServiceScopeTracker extends ScopeTracker {

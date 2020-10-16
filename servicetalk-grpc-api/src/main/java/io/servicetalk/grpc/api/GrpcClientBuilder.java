@@ -21,8 +21,10 @@ import io.servicetalk.client.api.ConnectionFactoryFilter;
 import io.servicetalk.client.api.ServiceDiscoverer;
 import io.servicetalk.client.api.ServiceDiscovererEvent;
 import io.servicetalk.concurrent.api.Single;
+import io.servicetalk.http.api.FilterableStreamingHttpClient;
 import io.servicetalk.http.api.FilterableStreamingHttpConnection;
 import io.servicetalk.http.api.HttpExecutionStrategy;
+import io.servicetalk.http.api.HttpExecutionStrategyInfluencer;
 import io.servicetalk.http.api.HttpLoadBalancerFactory;
 import io.servicetalk.http.api.HttpProtocolConfig;
 import io.servicetalk.http.api.StreamingHttpClientFilter;
@@ -248,7 +250,21 @@ public abstract class GrpcClientBuilder<U, R>
 
     private void appendCatchAllFilterIfRequired() {
         if (!appendedCatchAllFilter) {
-            doAppendHttpClientFilter(client -> new StreamingHttpClientFilter(client) {
+            doAppendHttpClientFilter(GrpcCatchAllHttpClientFilter.INSTANCE);
+            appendedCatchAllFilter = true;
+        }
+    }
+
+    private static final class GrpcCatchAllHttpClientFilter implements StreamingHttpClientFilterFactory,
+                                                                       HttpExecutionStrategyInfluencer {
+        static final GrpcCatchAllHttpClientFilter INSTANCE = new GrpcCatchAllHttpClientFilter();
+
+        private GrpcCatchAllHttpClientFilter() {
+        }
+
+        @Override
+        public StreamingHttpClientFilter create(final FilterableStreamingHttpClient client) {
+            return new StreamingHttpClientFilter(client) {
                 @Override
                 protected Single<StreamingHttpResponse> request(final StreamingHttpRequester delegate,
                                                                 final HttpExecutionStrategy strategy,
@@ -261,8 +277,13 @@ public abstract class GrpcClientBuilder<U, R>
                     }
                     return resp.recoverWith(t -> failed(toGrpcException(t)));
                 }
-            });
-            appendedCatchAllFilter = true;
+            };
+        }
+
+        @Override
+        public HttpExecutionStrategy influenceStrategy(final HttpExecutionStrategy strategy) {
+            // No influence since we do not block.
+            return strategy;
         }
     }
 

@@ -18,6 +18,7 @@ package io.servicetalk.grpc.api;
 import io.servicetalk.buffer.api.BufferAllocator;
 import io.servicetalk.concurrent.api.Single;
 import io.servicetalk.http.api.HttpExecutionStrategy;
+import io.servicetalk.http.api.HttpExecutionStrategyInfluencer;
 import io.servicetalk.http.api.HttpProtocolConfig;
 import io.servicetalk.http.api.HttpRequest;
 import io.servicetalk.http.api.HttpServiceContext;
@@ -303,8 +304,27 @@ public abstract class GrpcServerBuilder {
 
     private void appendCatchAllFilterIfRequired() {
         if (!appendedCatchAllFilter) {
-            doAppendHttpServiceFilter(CatchAllHttpServiceFilter::new);
+            doAppendHttpServiceFilter(GrpcCatchAllHttpServiceFilter.INSTANCE);
             appendedCatchAllFilter = true;
+        }
+    }
+
+    private static final class GrpcCatchAllHttpServiceFilter implements StreamingHttpServiceFilterFactory,
+                                                                        HttpExecutionStrategyInfluencer {
+        static final GrpcCatchAllHttpServiceFilter INSTANCE = new GrpcCatchAllHttpServiceFilter();
+
+        private GrpcCatchAllHttpServiceFilter() {
+        }
+
+        @Override
+        public StreamingHttpServiceFilter create(final StreamingHttpService service) {
+            return new CatchAllHttpServiceFilter(service);
+        }
+
+        @Override
+        public HttpExecutionStrategy influenceStrategy(final HttpExecutionStrategy strategy) {
+            // No influence since we do not block.
+            return strategy;
         }
     }
 

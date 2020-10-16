@@ -34,6 +34,7 @@ import static java.util.Objects.requireNonNull;
  */
 public final class TransportObserverConnectionFactoryFilter<ResolvedAddress, C extends ListenableAsyncCloseable>
         implements ConnectionFactoryFilter<ResolvedAddress, C> {
+    // todo: this class can't extend HttpExecutionStrategyInfluencer, it is in client.api
 
     private final Function<ResolvedAddress, TransportObserver> observerFactory;
 
