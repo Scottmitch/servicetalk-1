@@ -17,7 +17,7 @@ jobs:
           java-version: ${{ matrix.java }}
       - name: Print JDK Version
         run: java -version
-      - name: Grant execute permission for gradlew
+      - name: Make gradlew Executable
         run: chmod +x gradlew
       - name: Cache Gradle packages
         uses: actions/cache@v2
@@ -35,17 +35,17 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v2
         with:
-          name: checkstyle-results-${{ matrix.os }}-${{ matrix.java }}
+          name: checkstyle-results-${{ matrix.java }}
           path: '**/build/reports/checkstyle/*.xml'
       - name: Upload PMD Results
         if: always()
         uses: actions/upload-artifact@v2
         with:
-          name: pmd-results-${{ matrix.os }}-${{ matrix.java }}
+          name: pmd-results-${{ matrix.java }}
           path: '**/build/reports/pmd/*.xml'
       - name: Upload SpotBugs Results
         if: always()
         uses: actions/upload-artifact@v2
         with:
-          name: spotbugs-results-${{ matrix.os }}-${{ matrix.java }}
+          name: spotbugs-results-${{ matrix.java }}
           path: '**/build/reports/spotbugs/*.xml'
