@@ -29,7 +29,7 @@ jobs:
         os: [ ubuntu-latest ]
     steps:
       - name: Print Contents
-        run: find test-results-${{ matrix.os }}-${{ matrix.java }}
+        run: find /
       - name: Publish Test Report
         # v1.0.5
         uses: scacap/action-surefire-report@ad808943e6bfbd2e6acba7c53fdb5c89534da533
