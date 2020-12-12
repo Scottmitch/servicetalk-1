@@ -9,7 +9,6 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      steps:
       - name: Print github context
         env:
           WORKFLOW_CONTEXT: ${{ toJSON(github.event.workflow_run) }}
