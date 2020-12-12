@@ -24,7 +24,7 @@ jobs:
           workflow: ${{ github.event.workflow_run.workflow_id }}
           commit: ${{ github.event.workflow_run.head_commit.id }}
           # File location set in prb.yml and must be coordinated.
-          name: test-results-${{ matrix.os }}-${{ matrix.java }}.zip
+          name: test-results-${{ matrix.os }}-${{ matrix.java }}
       - name: Print PWD
         run: pwd
       - name: Find PWD
