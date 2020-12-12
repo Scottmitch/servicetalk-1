@@ -26,6 +26,11 @@ import static org.junit.Assert.assertEquals;
 
 public class ReadOnlyByteBufferTest {
     @Test
+    public void alwaysFail() {
+        throw new IllegalStateException("i failed!");
+    }
+
+    @Test
     public void directFromString() {
         String expectedString = "testing";
         ByteBuffer expectedBuffer = allocateDirect(expectedString.length());
