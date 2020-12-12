@@ -18,13 +18,7 @@ jobs:
           java-version: ${{ matrix.java }}
       - name: Print JDK Version
         run: java -version
-      - name: Print Linux Version
-        if: ${{ runner.os == 'Linux' }}
-        run: lsb_release -a; uname -a
-      - name: Print Windows Version
-        if: ${{ runner.os == 'Windows' }}
-        run: systeminfo | findstr /C:"OS"
-      - name: Grant execute permission for gradlew
+      - name: Make gradlew Executable
         run: chmod +x gradlew
       - name: Cache Gradle packages
         uses: actions/cache@v2
@@ -42,7 +36,7 @@ jobs:
         with:
           minimum-size: 8GB
           maximum-size: 16GB
-      - name: Build with Gradle
+      - name: Build and Test
         env:
           CI: true
           JAVA_TOOL_OPTIONS: -Dfile.encoding=UTF-8
@@ -53,21 +47,3 @@ jobs:
         with:
           name: test-results-${{ matrix.os }}-${{ matrix.java }}
           path: '**/build/test-results/test/TEST-*.xml'
-      - name: Upload CheckStyle Results
-        if: always()
-        uses: actions/upload-artifact@v2
-        with:
-          name: checkstyle-results-${{ matrix.os }}-${{ matrix.java }}
-          path: '**/build/reports/checkstyle/*.xml'
-      - name: Upload PMD Results
-        if: always()
-        uses: actions/upload-artifact@v2
-        with:
-          name: pmd-results-${{ matrix.os }}-${{ matrix.java }}
-          path: '**/build/reports/pmd/*.xml'
-      - name: Upload SpotBugs Results
-        if: always()
-        uses: actions/upload-artifact@v2
-        with:
-          name: spotbugs-results-${{ matrix.os }}-${{ matrix.java }}
-          path: '**/build/reports/spotbugs/*.xml'

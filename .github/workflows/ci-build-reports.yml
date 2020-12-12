@@ -5,7 +5,7 @@ on:
     types:
       - completed
 jobs:
-  publish-test-report:
+  download:
     runs-on: ubuntu-latest
     steps:
       - name: Print github context
@@ -13,18 +13,27 @@ jobs:
           WORKFLOW_CONTEXT: ${{ toJSON(github.event.workflow_run) }}
           GITHUB_CONTEXT: ${{ toJSON(github) }}
         run: echo "$GITHUB_CONTEXT \n\n\n\n $WORKFLOW_CONTEXT"
-      - name: Download test results to report
+      - name: Download Artifacts
         uses: dawidd6/action-download-artifact@v2
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           workflow: ${{ github.event.workflow_run.workflow_id }}
           commit: ${{ github.event.workflow_run.head_commit.id }}
+  publish-prb:
+    runs-on: ubuntu-latest
+    # Matrix of test results is only used for pull_request
+    # if: ${{ github.event == 'pull_request' }}
+    strategy:
+      matrix:
+        java: [ 8, 11 ]
+        os: [ ubuntu-latest ]
+    steps:
       - name: Publish Test Report
-        if: ${{ always() }}
         # v1.0.5
         uses: scacap/action-surefire-report@ad808943e6bfbd2e6acba7c53fdb5c89534da533
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          report_paths: '**/build/test-results/test/TEST-*.xml'
+          # File location set in prb.yml and must be coordinated.
+          report_paths: test-results-${{ matrix.os }}-${{ matrix.java }}/**/build/test-results/test/TEST-*.xml
           commit: ${{ github.event.workflow_run.head_commit.id }}
-          check_name: JDK x Test Report
+          check_name: Test Report JDK ${{ matrix.java }} ${{ matrix.os }}

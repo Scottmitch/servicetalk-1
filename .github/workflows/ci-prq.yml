@@ -31,3 +31,21 @@ jobs:
         env:
           CI: true
         run: ./gradlew --parallel --max-workers=4 clean quality
+      - name: Upload CheckStyle Results
+        if: always()
+        uses: actions/upload-artifact@v2
+        with:
+          name: checkstyle-results-${{ matrix.os }}-${{ matrix.java }}
+          path: '**/build/reports/checkstyle/*.xml'
+      - name: Upload PMD Results
+        if: always()
+        uses: actions/upload-artifact@v2
+        with:
+          name: pmd-results-${{ matrix.os }}-${{ matrix.java }}
+          path: '**/build/reports/pmd/*.xml'
+      - name: Upload SpotBugs Results
+        if: always()
+        uses: actions/upload-artifact@v2
+        with:
+          name: spotbugs-results-${{ matrix.os }}-${{ matrix.java }}
+          path: '**/build/reports/spotbugs/*.xml'
