@@ -453,7 +453,7 @@ public class BlockingStreamingToStreamingServiceTest {
                 .invokeService(executorRule.executor(), request,
                         req -> holder.adaptor().handle(mockCtx, req, reqRespFactory)
                                 .flatMapPublisher(response -> Publisher.<Object>from(response)
-                                        .concat(response.payloadBodyAndTrailers())), (t, e) -> failed(t))
+                                        .concat(response.messageBody())), (t, e) -> failed(t))
                 .toFuture().get();
 
         return new ArrayList<>(responseCollection);

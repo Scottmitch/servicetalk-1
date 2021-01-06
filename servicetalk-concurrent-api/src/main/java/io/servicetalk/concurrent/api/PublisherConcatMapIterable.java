@@ -209,9 +209,11 @@ final class PublisherConcatMapIterable<T, U> extends AbstractSynchronousPublishe
                             FlowControlUtils::addWithOverflowProtectionIfNotNegative);
                     if (currRequestN < 0) {
                         terminated = true;
-                        // We clear out the current iterator to allow for GC, and we don't want to deliver any more data
-                        // because it may be out of order or incomplete ... so simulate a terminated event.
-                        doCancel();
+                        if (!thrown) {
+                            // We clear out the current iterator to allow for GC, and we don't want to deliver any more
+                            // data because it may be out of order or incomplete ... so simulate a terminated event.
+                            doCancel();
+                        }
                     } else if (!terminated) {
                         try {
                             if (terminalNotification == null && !hasNext && currRequestN > 0 &&

@@ -611,9 +611,9 @@ final class PublisherFlatMapMerge<T, R> extends AbstractAsynchronousPublisherOpe
                 if (parent.source.maxDelayedErrors == 0) {
                     // Make sure errors aren't delivered out of order relative to onNext signals which maybe queued.
                     try {
-                        parent.doCancel(true, false);
-                    } finally {
                         parent.tryEmitItem(TerminalNotification.error(t), this);
+                    } finally {
+                        parent.doCancel(true, false);
                     }
                 } else {
                     CompositeException de = parent.delayedError;

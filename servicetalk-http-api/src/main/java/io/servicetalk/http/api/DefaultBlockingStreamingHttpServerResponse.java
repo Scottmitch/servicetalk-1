@@ -113,7 +113,7 @@ final class DefaultBlockingStreamingHttpServerResponse extends BlockingStreaming
     }
 
     boolean markMetaSent() {
-        return metaSentUpdater.compareAndSet(this, 0, 1);
+        return metaSentUpdater.getAndSet(this, 1) == 0;
     }
 
     private static void throwMetaAlreadySent() {

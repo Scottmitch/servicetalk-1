@@ -35,4 +35,16 @@ public interface PayloadWriter<T> extends Closeable, Flushable {
      * closed.
      */
     void write(T t) throws IOException;
+
+    /**
+     * Reclaims any resources associated with this {@link PayloadWriter} and propagates {@code cause} to downstream
+     * consumers. Subsequent calls to {@link #write(Object)} are expected to fail.
+     * <p>
+     * This method shares the same characteristics as {@link #close()}, and care must be taken to clean up resources
+     * and propagate the {@code cause} before throwing.
+     *
+     * @param cause Indicate the close is a result of a failure.
+     * @throws IOException if an input/output error occurs.
+     */
+    void close(Throwable cause) throws IOException;
 }
