@@ -50,7 +50,7 @@ jobs:
       - name: Publish Test Report
         if: ${{ always() }}
         # v1.0.5
-        uses: scacap/action-surefire-report@ad808943e6bfbd2e6acba7c53fdb5c89534da533
+        uses: scacap/action-surefire-report@fd75ee04fbef040d0198e50ad153fcf997a0cf78
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           report_paths: '**/build/test-results/test/TEST-*.xml'
