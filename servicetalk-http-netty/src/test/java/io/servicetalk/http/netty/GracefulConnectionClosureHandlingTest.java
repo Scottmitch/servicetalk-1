@@ -71,7 +71,8 @@ import static io.servicetalk.http.api.HttpExecutionStrategies.defaultStrategy;
 import static io.servicetalk.http.api.HttpHeaderNames.CONTENT_LENGTH;
 import static io.servicetalk.http.api.HttpHeaderValues.ZERO;
 import static io.servicetalk.http.api.HttpResponseStatus.OK;
-import static io.servicetalk.http.api.HttpSerializationProviders.textSerializer;
+import static io.servicetalk.http.api.HttpSerializers.textSerializerUtf8FixLen;
+import static io.servicetalk.http.netty.ContentLengthAndTrailersTest.addFixedLengthFramingOverhead;
 import static io.servicetalk.http.netty.HttpClients.forResolvedAddress;
 import static io.servicetalk.http.netty.HttpClients.forSingleAddressViaProxy;
 import static io.servicetalk.http.netty.HttpProtocol.HTTP_2;
@@ -181,19 +182,27 @@ class GracefulConnectionClosureHandlingTest {
 
         serverContext = serverBuilder.listenBlockingStreamingAndAwait((ctx, request, response) -> {
             serverReceivedRequest.countDown();
-            response.addHeader(CONTENT_LENGTH, valueOf(RESPONSE_CONTENT.length()));
+            response.addHeader(CONTENT_LENGTH, valueOf(addFixedLengthFramingOverhead(RESPONSE_CONTENT.length())));
 
             serverSendResponse.await();
-            try (HttpPayloadWriter<String> writer = response.sendMetaData(textSerializer())) {
+            try (HttpPayloadWriter<String> writer = response.sendMetaData(textSerializerUtf8FixLen())) {
                 // Subscribe to the request payload body before response writer closes
                 BlockingIterator<Buffer> iterator = request.payloadBody().iterator();
                 // Consume request payload body asynchronously:
                 ctx.executionContext().executor().execute(() -> {
                     int receivedSize = 0;
                     while (iterator.hasNext()) {
-                        Buffer chunk = iterator.next();
-                        assert chunk != null;
-                        receivedSize += chunk.readableBytes();
+                        try {
+                            Buffer chunk = iterator.next();
+                            assert chunk != null;
+                            receivedSize += chunk.readableBytes();
+                        } catch (Throwable cause) {
+                            try {
+                                writer.write(cause.toString());
+                            } catch (IOException e) {
+                                throw new AssertionError(e);
+                            }
+                        }
                     }
                     serverReceivedRequestPayload.add(receivedSize);
                 });
@@ -474,22 +483,21 @@ class GracefulConnectionClosureHandlingTest {
     }
 
     private StreamingHttpRequest newRequest(String path) {
-        return connection.asConnection().post(path)
-                .addHeader(CONTENT_LENGTH, valueOf(REQUEST_CONTENT.length()))
-                .payloadBody(REQUEST_CONTENT, textSerializer())
-                .toStreamingRequest();
+        return connection.post(path)
+                .addHeader(CONTENT_LENGTH, valueOf(addFixedLengthFramingOverhead(REQUEST_CONTENT.length())))
+                .payloadBody(from(REQUEST_CONTENT), textSerializerUtf8FixLen());
     }
 
     private StreamingHttpRequest newRequest(String path, CountDownLatch payloadBodyLatch) {
         return connection.post(path)
-                .addHeader(CONTENT_LENGTH, valueOf(REQUEST_CONTENT.length()))
+                .addHeader(CONTENT_LENGTH, valueOf(addFixedLengthFramingOverhead(REQUEST_CONTENT.length())))
                 .payloadBody(connection.connectionContext().executionContext().executor().submit(() -> {
                     try {
                         payloadBodyLatch.await();
                     } catch (InterruptedException e) {
                         throwException(e);
                     }
-                }).concat(from(REQUEST_CONTENT)), textSerializer());
+                }).concat(from(REQUEST_CONTENT)), textSerializerUtf8FixLen());
     }
 
     private static void assertResponse(StreamingHttpResponse response) {

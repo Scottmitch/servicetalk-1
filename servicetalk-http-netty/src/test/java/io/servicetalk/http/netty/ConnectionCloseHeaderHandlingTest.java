@@ -66,7 +66,8 @@ import static io.servicetalk.http.api.HttpHeaderValues.ZERO;
 import static io.servicetalk.http.api.HttpRequestMethod.GET;
 import static io.servicetalk.http.api.HttpRequestMethod.POST;
 import static io.servicetalk.http.api.HttpResponseStatus.OK;
-import static io.servicetalk.http.api.HttpSerializationProviders.textSerializer;
+import static io.servicetalk.http.api.HttpSerializers.textSerializerUtf8FixLen;
+import static io.servicetalk.http.netty.ContentLengthAndTrailersTest.addFixedLengthFramingOverhead;
 import static io.servicetalk.http.netty.HttpsProxyTest.safeClose;
 import static io.servicetalk.logging.api.LogLevel.TRACE;
 import static io.servicetalk.test.resources.DefaultTestCerts.serverPemHostname;
@@ -154,7 +155,8 @@ final class ConnectionCloseHeaderHandlingTest {
                         requestReceived.countDown();
                         boolean noResponseContent = request.hasQueryParameter("noResponseContent", "true");
                         String content = noResponseContent ? "" : "server_content";
-                        response.addHeader(CONTENT_LENGTH, noResponseContent ? ZERO : valueOf(content.length()));
+                        response.addHeader(CONTENT_LENGTH, noResponseContent ? ZERO :
+                                valueOf(addFixedLengthFramingOverhead(content.length())));
 
                         // Add the "connection: close" header only when requested:
                         if (request.hasQueryParameter(SERVER_SHOULD_CLOSE)) {
@@ -162,7 +164,7 @@ final class ConnectionCloseHeaderHandlingTest {
                         }
 
                         sendResponse.await();
-                        try (HttpPayloadWriter<String> writer = response.sendMetaData(textSerializer())) {
+                        try (HttpPayloadWriter<String> writer = response.sendMetaData(textSerializerUtf8FixLen())) {
                             // Subscribe to the request payload body before response writer closes
                             BlockingIterator<Buffer> iterator = request.payloadBody().iterator();
                             // Consume request payload body asynchronously:
@@ -295,7 +297,7 @@ final class ConnectionCloseHeaderHandlingTest {
                     } catch (InterruptedException e) {
                         throwException(e);
                     }
-                }).concat(from(content)), textSerializer());
+                }).concat(from(content)), textSerializerUtf8FixLen());
             }
             if (requestInitiatesClosure) {
                 request.addHeader(CONNECTION, CLOSE);
@@ -382,7 +384,7 @@ final class ConnectionCloseHeaderHandlingTest {
             String content = "request_content";
             connection.request(connection.get("/second")
                     .addHeader(CONTENT_LENGTH, valueOf(content.length()))
-                    .payloadBody(from(content).concat(never()), textSerializer()))
+                    .payloadBody(from(content).concat(never()), textSerializerUtf8FixLen()))
                     .whenOnError(secondRequestError::set)
                     .whenFinally(secondResponseReceived::countDown)
                     .subscribe(second -> { });
