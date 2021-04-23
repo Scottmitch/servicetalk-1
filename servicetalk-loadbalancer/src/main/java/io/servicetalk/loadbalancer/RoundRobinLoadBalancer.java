@@ -238,45 +238,55 @@ public final class RoundRobinLoadBalancer<ResolvedAddress, C extends LoadBalance
     @Nullable
     private C doSelection(final Predicate<C> selector, final Object[] connections, final int rndUpperBound,
                           final int indexOffset, final ThreadLocalRandom rnd) {
-        int i = 0;
-        long indexMask = 0;
-        int collisions = 0;
-        final int collisionThreshold = connections.length >>> 1;
-        while (i < rndUpperBound) {
-            int index = rnd.nextInt(0, rndUpperBound);
-            long shiftIndex = 1L << index;
-            if ((indexMask & shiftIndex) == 0) {
-                @SuppressWarnings("unchecked")
-                final C connection = (C) connections[index + indexOffset];
-                if (selector.test(connection)) {
-                    return connection;
-                }
-                ++i;
-                indexMask |= shiftIndex;
-            } else if (++collisions > collisionThreshold || i > collisionThreshold) {
-                shiftIndex = 1L;
-                index = 0;
-                for (;;) {
-                    while ((indexMask & shiftIndex) != 0) {
-                        shiftIndex <<= 1;
-                        ++index;
-                        // no need to set indexMask because we only iterate sequentially at this point.
-                    }
-
-                    @SuppressWarnings("unchecked")
-                    final C connection = (C) connections[index + indexOffset];
-                    if (selector.test(connection)) {
-                        return connection;
-                    } else if (++i == rndUpperBound) {
-                        return null;
-                    }
-                    // Move on to the next index
-                    shiftIndex <<= 1;
-                    ++index;
-                }
+        int index = rnd.nextInt(0, rndUpperBound);
+        for (int i = 0; i < rndUpperBound; ++i) {
+            @SuppressWarnings("unchecked")
+            final C connection = (C) connections[index + indexOffset];
+            if (selector.test(connection)) {
+                return connection;
             }
+            index = (++index) % rndUpperBound;
         }
         return null;
+        // int i = 0;
+        // long indexMask = 0;
+        // int collisions = 0;
+        // final int collisionThreshold = connections.length >>> 1;
+        // while (i < rndUpperBound) {
+        //     int index = rnd.nextInt(0, rndUpperBound);
+        //     long shiftIndex = 1L << index;
+        //     if ((indexMask & shiftIndex) == 0) {
+        //         @SuppressWarnings("unchecked")
+        //         final C connection = (C) connections[index + indexOffset];
+        //         if (selector.test(connection)) {
+        //             return connection;
+        //         }
+        //         ++i;
+        //         indexMask |= shiftIndex;
+        //     } else if (++collisions > collisionThreshold || i > collisionThreshold) {
+        //         shiftIndex = 1L;
+        //         index = 0;
+        //         for (;;) {
+        //             while ((indexMask & shiftIndex) != 0) {
+        //                 shiftIndex <<= 1;
+        //                 ++index;
+        //                 // no need to set indexMask because we only iterate sequentially at this point.
+        //             }
+        //
+        //             @SuppressWarnings("unchecked")
+        //             final C connection = (C) connections[index + indexOffset];
+        //             if (selector.test(connection)) {
+        //                 return connection;
+        //             } else if (++i == rndUpperBound) {
+        //                 return null;
+        //             }
+        //             // Move on to the next index
+        //             shiftIndex <<= 1;
+        //             ++index;
+        //         }
+        //     }
+        // }
+        // return null;
     }
 
     private Single<C> selectConnection0(Predicate<C> selector) {
