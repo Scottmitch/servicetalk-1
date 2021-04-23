@@ -49,6 +49,8 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Stream;
 
+import javax.annotation.Nullable;
+
 import static io.servicetalk.client.api.LoadBalancerReadyEvent.LOAD_BALANCER_NOT_READY_EVENT;
 import static io.servicetalk.client.api.LoadBalancerReadyEvent.LOAD_BALANCER_READY_EVENT;
 import static io.servicetalk.concurrent.api.AsyncCloseables.newCompositeCloseable;
@@ -98,23 +100,6 @@ public final class RoundRobinLoadBalancer<ResolvedAddress, C extends LoadBalance
     @SuppressWarnings("rawtypes")
     private static final AtomicIntegerFieldUpdater<RoundRobinLoadBalancer> indexUpdater =
             newUpdater(RoundRobinLoadBalancer.class, "index");
-
-    /**
-     * With a relatively small number of connections we can minimize connection creation under moderate concurrency by
-     * exhausting the full search space without sacrificing too much latency caused by the cost of a CAS operation per
-     * selection attempt.
-     */
-    private static final int MIN_SEARCH_SPACE = 64;
-
-    /**
-     * For larger search spaces, due to the cost of a CAS operation per selection attempt we see diminishing returns for
-     * trying to locate an available connection when most connections are in use. This increases tail latencies, thus
-     * after some number of failed attempts it appears to be more beneficial to open a new connection instead.
-     * <p>
-     * The current heuristics were chosen based on a set of benchmarks under various circumstances, low connection
-     * counts, larger connection counts, low connection churn, high connection churn.
-     */
-    private static final float SEARCH_FACTOR = 0.75f;
 
     @SuppressWarnings("unused")
     private volatile int index;
@@ -250,6 +235,50 @@ public final class RoundRobinLoadBalancer<ResolvedAddress, C extends LoadBalance
         return eventStream;
     }
 
+    @Nullable
+    private C doSelection(final Predicate<C> selector, final Object[] connections, final int rndUpperBound,
+                          final int indexOffset, final ThreadLocalRandom rnd) {
+        int i = 0;
+        long indexMask = 0;
+        int collisions = 0;
+        final int collisionThreshold = connections.length >>> 1;
+        while (i < rndUpperBound) {
+            int index = rnd.nextInt(0, rndUpperBound);
+            long shiftIndex = 1L << index;
+            if ((indexMask & shiftIndex) == 0) {
+                @SuppressWarnings("unchecked")
+                final C connection = (C) connections[index + indexOffset];
+                if (selector.test(connection)) {
+                    return connection;
+                }
+                ++i;
+                indexMask |= shiftIndex;
+            } else if (++collisions > collisionThreshold || i > collisionThreshold) {
+                shiftIndex = 1L;
+                index = 0;
+                for (;;) {
+                    while ((indexMask & shiftIndex) != 0) {
+                        shiftIndex <<= 1;
+                        ++index;
+                        // no need to set indexMask because we only iterate sequentially at this point.
+                    }
+
+                    @SuppressWarnings("unchecked")
+                    final C connection = (C) connections[index + indexOffset];
+                    if (selector.test(connection)) {
+                        return connection;
+                    } else if (++i == rndUpperBound) {
+                        return null;
+                    }
+                    // Move on to the next index
+                    shiftIndex <<= 1;
+                    ++index;
+                }
+            }
+        }
+        return null;
+    }
+
     private Single<C> selectConnection0(Predicate<C> selector) {
         final List<Host<ResolvedAddress, C>> activeHosts = this.activeHosts;
         if (activeHosts.isEmpty()) {
@@ -264,16 +293,27 @@ public final class RoundRobinLoadBalancer<ResolvedAddress, C extends LoadBalance
         assert host != null : "Host can't be null.";
         final ThreadLocalRandom rnd = ThreadLocalRandom.current();
 
-        // Try first to see if an existing connection can be used
+        // Select a sub-section of 64 consecutive connections to attempt to use, and try to select each one once.
         final Object[] connections = host.connections;
-        // With small enough search space, attempt all connections.
-        // Back off after exploring most of the search space, it gives diminishing returns.
-        final int attempts = connections.length < MIN_SEARCH_SPACE ?
-                connections.length : (int) (connections.length * SEARCH_FACTOR);
-        for (int i = 0; i < attempts; i++) {
-            @SuppressWarnings("unchecked")
-            final C connection = (C) connections[rnd.nextInt(connections.length)];
-            if (selector.test(connection)) {
+        if (connections.length <= 64) {
+            C connection = doSelection(selector, connections, connections.length, 0, rnd);
+            if (connection != null) {
+                return succeeded(connection);
+            }
+        } else {
+            final int end = connections.length - 64;
+            int offset = 0;
+            do {
+                C connection = doSelection(selector, connections, 64, offset, rnd);
+                if (connection != null) {
+                    return succeeded(connection);
+                }
+                offset += 63;
+            } while (offset < end);
+
+            // Try to select from the remaining block of connections.
+            C connection = doSelection(selector, connections, connections.length - offset, offset, rnd);
+            if (connection != null) {
                 return succeeded(connection);
             }
         }
