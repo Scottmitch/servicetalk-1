@@ -49,8 +49,6 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Stream;
 
-import javax.annotation.Nullable;
-
 import static io.servicetalk.client.api.LoadBalancerReadyEvent.LOAD_BALANCER_NOT_READY_EVENT;
 import static io.servicetalk.client.api.LoadBalancerReadyEvent.LOAD_BALANCER_READY_EVENT;
 import static io.servicetalk.concurrent.api.AsyncCloseables.newCompositeCloseable;
@@ -235,59 +233,49 @@ public final class RoundRobinLoadBalancer<ResolvedAddress, C extends LoadBalance
         return eventStream;
     }
 
-    @Nullable
-    private C doSelection(final Predicate<C> selector, final Object[] connections, final int rndUpperBound,
-                          final int indexOffset, final ThreadLocalRandom rnd) {
-        int index = rnd.nextInt(0, rndUpperBound);
-        for (int i = 0; i < rndUpperBound; ++i) {
-            @SuppressWarnings("unchecked")
-            final C connection = (C) connections[index + indexOffset];
-            if (selector.test(connection)) {
-                return connection;
-            }
-            index = (++index) % rndUpperBound;
-        }
-        return null;
-        // int i = 0;
-        // long indexMask = 0;
-        // int collisions = 0;
-        // final int collisionThreshold = connections.length >>> 1;
-        // while (i < rndUpperBound) {
-        //     int index = rnd.nextInt(0, rndUpperBound);
-        //     long shiftIndex = 1L << index;
-        //     if ((indexMask & shiftIndex) == 0) {
-        //         @SuppressWarnings("unchecked")
-        //         final C connection = (C) connections[index + indexOffset];
-        //         if (selector.test(connection)) {
-        //             return connection;
-        //         }
-        //         ++i;
-        //         indexMask |= shiftIndex;
-        //     } else if (++collisions > collisionThreshold || i > collisionThreshold) {
-        //         shiftIndex = 1L;
-        //         index = 0;
-        //         for (;;) {
-        //             while ((indexMask & shiftIndex) != 0) {
-        //                 shiftIndex <<= 1;
-        //                 ++index;
-        //                 // no need to set indexMask because we only iterate sequentially at this point.
-        //             }
-        //
-        //             @SuppressWarnings("unchecked")
-        //             final C connection = (C) connections[index + indexOffset];
-        //             if (selector.test(connection)) {
-        //                 return connection;
-        //             } else if (++i == rndUpperBound) {
-        //                 return null;
-        //             }
-        //             // Move on to the next index
-        //             shiftIndex <<= 1;
-        //             ++index;
-        //         }
-        //     }
-        // }
-        // return null;
-    }
+    // @Nullable
+    // private C doSelection(final Predicate<C> selector, final Object[] connections, final int rndUpperBound,
+    //                       final int indexOffset, final ThreadLocalRandom rnd) {
+    //     int i = 0;
+    //     long indexMask = 0;
+    //     int collisions = 0;
+    //     final int collisionThreshold = connections.length >>> 1;
+    //     while (i < rndUpperBound) {
+    //         int index = rnd.nextInt(0, rndUpperBound);
+    //         long shiftIndex = 1L << index;
+    //         if ((indexMask & shiftIndex) == 0) {
+    //             @SuppressWarnings("unchecked")
+    //             final C connection = (C) connections[index + indexOffset];
+    //             if (selector.test(connection)) {
+    //                 return connection;
+    //             }
+    //             ++i;
+    //             indexMask |= shiftIndex;
+    //         } else if (++collisions > collisionThreshold || i > collisionThreshold) {
+    //             shiftIndex = 1L;
+    //             index = 0;
+    //             for (;;) {
+    //                 while ((indexMask & shiftIndex) != 0) {
+    //                     shiftIndex <<= 1;
+    //                     ++index;
+    //                     // no need to set indexMask because we only iterate sequentially at this point.
+    //                 }
+    //
+    //                 @SuppressWarnings("unchecked")
+    //                 final C connection = (C) connections[index + indexOffset];
+    //                 if (selector.test(connection)) {
+    //                     return connection;
+    //                 } else if (++i == rndUpperBound) {
+    //                     return null;
+    //                 }
+    //                 // Move on to the next index
+    //                 shiftIndex <<= 1;
+    //                 ++index;
+    //             }
+    //         }
+    //     }
+    //     return null;
+    // }
 
     private Single<C> selectConnection0(Predicate<C> selector) {
         final List<Host<ResolvedAddress, C>> activeHosts = this.activeHosts;
@@ -303,30 +291,41 @@ public final class RoundRobinLoadBalancer<ResolvedAddress, C extends LoadBalance
         assert host != null : "Host can't be null.";
         final ThreadLocalRandom rnd = ThreadLocalRandom.current();
 
-        // Select a sub-section of 64 consecutive connections to attempt to use, and try to select each one once.
         final Object[] connections = host.connections;
-        if (connections.length <= 64) {
-            C connection = doSelection(selector, connections, connections.length, 0, rnd);
-            if (connection != null) {
-                return succeeded(connection);
-            }
-        } else {
-            final int end = connections.length - 64;
-            int offset = 0;
-            do {
-                C connection = doSelection(selector, connections, 64, offset, rnd);
-                if (connection != null) {
+        if (connections.length > 0) {
+            int index = rnd.nextInt(connections.length);
+            final int attempts = Math.min(connections.length, 256);
+            for (int i = 0; i < attempts; ++i) {
+                @SuppressWarnings("unchecked")
+                final C connection = (C) connections[index];
+                if (selector.test(connection)) {
                     return succeeded(connection);
                 }
-                offset += 63;
-            } while (offset < end);
-
-            // Try to select from the remaining block of connections.
-            C connection = doSelection(selector, connections, connections.length - offset, offset, rnd);
-            if (connection != null) {
-                return succeeded(connection);
+                index = (++index) % connections.length;
             }
         }
+        // if (connections.length <= 64) {
+        //     C connection = doSelection(selector, connections, connections.length, 0, rnd);
+        //     if (connection != null) {
+        //         return succeeded(connection);
+        //     }
+        // } else {
+        //     final int end = connections.length - 64;
+        //     int offset = 0;
+        //     do {
+        //         C connection = doSelection(selector, connections, 64, offset, rnd);
+        //         if (connection != null) {
+        //             return succeeded(connection);
+        //         }
+        //         offset += 63;
+        //     } while (offset < end);
+        //
+        //     // Try to select from the remaining block of connections.
+        //     C connection = doSelection(selector, connections, connections.length - offset, offset, rnd);
+        //     if (connection != null) {
+        //         return succeeded(connection);
+        //     }
+        // }
 
         // No connection was selected: create a new one.
         // This LB implementation does not automatically provide TransportObserver. Therefore, we pass "null" here.
