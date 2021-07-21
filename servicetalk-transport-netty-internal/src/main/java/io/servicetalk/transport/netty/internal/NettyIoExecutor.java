@@ -20,7 +20,6 @@ import io.servicetalk.transport.api.IoExecutor;
 
 /**
  * {@link IoExecutor} for netty.
- *
  * <h2>Caution</h2>
  * Implementations of this interface assumes that they would not be used to run blocking code.
  * If this assumption is violated, it will impact eventloop responsiveness and hence should be avoided.
@@ -28,7 +27,7 @@ import io.servicetalk.transport.api.IoExecutor;
 public interface NettyIoExecutor extends IoExecutor {
     /**
      * Get an {@link Executor} which will use an {@link IoExecutor} thread for execution.
-     * <h2>Caution</h2>
+     * <h4>Caution</h4>
      * Implementation of this method assumes there would be no blocking code inside the submitted {@link Runnable}s.
      * If this assumption is violated, it will impact EventLoop responsiveness and hence should be avoided.
      * @return an {@link Executor} which will use an {@link IoExecutor} thread for execution.
