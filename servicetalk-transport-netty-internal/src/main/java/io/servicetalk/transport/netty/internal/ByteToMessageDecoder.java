@@ -62,7 +62,7 @@ import static java.lang.Integer.MAX_VALUE;
  *     }
  * </pre>
  *
- * <h3>Frame detection</h3>
+ * <h2>Frame detection</h2>
  * <p>
  * Generally frame detection should be handled earlier in the pipeline by adding a
  * {@link DelimiterBasedFrameDecoder}, {@link FixedLengthFrameDecoder}, {@link LengthFieldBasedFrameDecoder},
@@ -77,7 +77,7 @@ import static java.lang.Integer.MAX_VALUE;
  * One <strong>MUST</strong> use the reader index when using methods like {@link ByteBuf#getInt(int)}.
  * For example calling <code>in.getInt(0)</code> is assuming the frame starts at the beginning of the buffer, which
  * is not always the case. Use <code>in.getInt(in.readerIndex())</code> instead.
- * <h3>Pitfalls</h3>
+ * <h2>Pitfalls</h2>
  * <p>
  * Be aware that sub-classes of {@link ByteToMessageDecoder} <strong>MUST NOT</strong>
  * annotated with {@link Sharable}.
