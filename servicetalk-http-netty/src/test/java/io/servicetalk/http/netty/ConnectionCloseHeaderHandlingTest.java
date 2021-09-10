@@ -291,6 +291,7 @@ final class ConnectionCloseHeaderHandlingTest {
         void testConnectionClosure(boolean useUds, boolean viaProxy, boolean awaitRequestPayload,
                                    boolean requestInitiatesClosure,
                                    boolean noRequestContent, boolean noResponseContent) throws Exception {
+            //todo
             setUp(useUds, viaProxy, awaitRequestPayload);
             String content = "request_content";
             StreamingHttpRequest request = connection.newRequest(noRequestContent ? GET : POST, "/first")
