@@ -212,6 +212,7 @@ final class NettyChannelPublisher<T> extends SubscribablePublisher<T> {
          * If we do not resetSubscription() before onNext such a cancel will be illegal and close the connection.
          */
         final boolean isLast = terminalSignalPredicate.test(t);
+        LOGGER.error("emitting ch={} onNext={} last={}", channel, t, isLast);
         if (isLast) {
             resetSubscription();
         }
