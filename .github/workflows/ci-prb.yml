@@ -35,7 +35,7 @@ jobs:
         env:
           CI: true
           JAVA_TOOL_OPTIONS: -Dfile.encoding=UTF-8
-        run: cd servicetalk-http-netty && ../gradlew test --tests '*ConnectionCloseHeaderHandlingTest$NonPipelinedRequestsTest.testConnectionClosure'
+        run: cd servicetalk-http-netty && while ../gradlew test --tests '*ConnectionCloseHeaderHandlingTest$NonPipelinedRequestsTest.testConnectionClosure'; do echo "Next run.."; done
       - name: Upload Test Results
         if: always()
         uses: actions/upload-artifact@v2
