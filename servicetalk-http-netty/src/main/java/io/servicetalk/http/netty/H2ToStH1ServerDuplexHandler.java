@@ -121,7 +121,6 @@ final class H2ToStH1ServerDuplexHandler extends AbstractH2DuplexHandler {
                                  HttpRequestMethod httpMethod, String path) {
         ctx.fireChannelRead(newRequestMetaData(HTTP_2_0, httpMethod, path,
                 h2HeadersToH1HeadersServer(h2Headers, httpMethod, true)));
-        ctx.fireChannelRead(headersFactory.newEmptyTrailers());
     }
 
     private NettyH2HeadersToHttpHeaders h2HeadersToH1HeadersServer(Http2Headers h2Headers,

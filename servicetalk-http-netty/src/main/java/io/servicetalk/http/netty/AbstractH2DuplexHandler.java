@@ -44,7 +44,6 @@ import static io.servicetalk.http.netty.NettyHttp2ExceptionUtils.newStreamResetE
 import static io.servicetalk.transport.netty.internal.ChannelCloseUtils.channelError;
 
 abstract class AbstractH2DuplexHandler extends ChannelDuplexHandler {
-
     final BufferAllocator allocator;
     final HttpHeadersFactory headersFactory;
     final CloseHandler closeHandler;
@@ -120,7 +119,6 @@ abstract class AbstractH2DuplexHandler extends ChannelDuplexHandler {
                 toRelease = release(dataFrame);
             }
             if (dataFrame.isEndStream()) {
-                ctx.fireChannelRead(headersFactory.newEmptyTrailers());
                 closeHandler.protocolPayloadEndInbound(ctx);
             }
         } finally {
