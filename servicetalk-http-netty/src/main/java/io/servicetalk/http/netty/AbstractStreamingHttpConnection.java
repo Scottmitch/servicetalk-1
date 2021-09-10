@@ -117,7 +117,7 @@ abstract class AbstractStreamingHttpConnection<CC extends NettyConnectionContext
                         // Defer subscribe to the messageBody until transport requests it to allow clients retry failed
                         // requests with non-replayable messageBody
                         Single.<Object>succeeded(request).concat(request.messageBody(), true)
-                                .scanWith(HeaderUtils::insertTrailersMapper);
+                                .scanWith(() -> HeaderUtils.insertTrailersMapper(connection));
                 addRequestTransferEncodingIfNecessary(request);
             }
 

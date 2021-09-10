@@ -119,12 +119,13 @@ abstract class HttpObjectEncoder<T extends HttpMetaData> extends ChannelOutbound
 
     @Override
     public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) {
-        LOGGER.error("write ch={} evt={}", ctx.channel(), msg);
+        LOGGER.error("write ch={} msg={}", ctx.channel(), msg);
         if (msg instanceof HttpMetaData) {
             if (state != ST_INIT) {
                 throw new IllegalStateException("unexpected message type: " + simpleClassName(msg));
             }
             T metaData = castMetaData(msg);
+            LOGGER.error("write ch={} hdrs={}", ctx.channel(), metaData.toString((k, v) -> v));
             closeHandler.protocolPayloadBeginOutbound(ctx);
             if (shouldClose(metaData)) {
                 closeHandler.protocolClosingOutbound(ctx);

@@ -146,6 +146,10 @@ final class HeaderUtils {
     }
 
     static ScanWithMapper<Object, Object> insertTrailersMapper() {
+        return insertTrailersMapper(null);
+    }
+
+    static ScanWithMapper<Object, Object> insertTrailersMapper(@Nullable Object state) {
         return new ScanWithMapper<Object, Object>() {
 
             private boolean sawHeaders;
@@ -153,7 +157,7 @@ final class HeaderUtils {
             @Nullable
             @Override
             public Object mapOnNext(@Nullable final Object next) {
-                LOGGER.error("insertTrailersMapper::mapOnNext {}", next);
+                LOGGER.error("insertTrailersMapper::mapOnNext {} ch={}", next, state);
                 if (next instanceof HttpHeaders) {
                     sawHeaders = true;
                 }
@@ -163,13 +167,13 @@ final class HeaderUtils {
             @Nullable
             @Override
             public Object mapOnError(final Throwable t) throws Throwable {
-                LOGGER.error("insertTrailersMapper::mapOnError", t);
+                LOGGER.error("insertTrailersMapper::mapOnError ch={}", state, t);
                 throw t;
             }
 
             @Override
             public Object mapOnComplete() {
-                LOGGER.error("insertTrailersMapper::mapOnComplete");
+                LOGGER.error("insertTrailersMapper::mapOnComplete ch={}", state);
                 return EmptyHttpHeaders.INSTANCE;
             }
 
