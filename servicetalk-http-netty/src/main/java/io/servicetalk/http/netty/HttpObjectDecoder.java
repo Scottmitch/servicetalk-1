@@ -54,6 +54,8 @@ import io.netty.handler.codec.TooLongFrameException;
 import io.netty.handler.codec.http.HttpExpectationFailedEvent;
 import io.netty.util.AsciiString;
 import io.netty.util.ByteProcessor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 
@@ -88,6 +90,7 @@ import static java.nio.charset.StandardCharsets.US_ASCII;
 import static java.util.Objects.requireNonNull;
 
 abstract class HttpObjectDecoder<T extends HttpMetaData> extends ByteToMessageDecoder {
+    private static final Logger LOGGER = LoggerFactory.getLogger(HttpObjectDecoder.class);
     private static final long HTTP_VERSION_FORMAT = 0x485454502f312e00L;    // HEX representation of "HTTP/1.x"
     private static final long HTTP_VERSION_MASK = 0xffffffffffffff00L;
     private static final ByteProcessor SKIP_PREFACING_CRLF = value -> {

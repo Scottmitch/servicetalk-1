@@ -22,6 +22,8 @@ import io.servicetalk.concurrent.internal.TerminalNotification;
 import io.netty.channel.Channel;
 import io.netty.channel.EventLoop;
 import io.netty.util.ReferenceCounted;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayDeque;
 import java.util.Queue;
@@ -37,6 +39,7 @@ import static io.servicetalk.transport.netty.internal.ChannelCloseUtils.close;
 import static java.util.Objects.requireNonNull;
 
 final class NettyChannelPublisher<T> extends SubscribablePublisher<T> {
+    private static final Logger LOGGER = LoggerFactory.getLogger(NettyChannelPublisher.class);
     // All state is only touched from eventloop.
     private long requestCount;
     private boolean requested;
@@ -222,6 +225,7 @@ final class NettyChannelPublisher<T> extends SubscribablePublisher<T> {
             return true;
         }
         if (isLast) {
+            LOGGER.error("emitting onComplete ch={}", channel);
             target.associatedSub.onComplete();
             return true;
         }
