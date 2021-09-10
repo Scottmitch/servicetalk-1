@@ -29,6 +29,8 @@ import io.servicetalk.http.api.StreamingHttpRequest;
 import io.servicetalk.http.api.StreamingHttpResponse;
 
 import io.netty.util.AsciiString;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -59,6 +61,7 @@ import static io.servicetalk.http.api.HttpResponseStatus.StatusClass.INFORMATION
 import static io.servicetalk.http.api.HttpResponseStatus.StatusClass.SUCCESSFUL_2XX;
 
 final class HeaderUtils {
+    private static final Logger LOGGER = LoggerFactory.getLogger(HeaderUtils.class);
     static final Predicate<Object> LAST_CHUNK_PREDICATE = p -> p instanceof HttpHeaders;
 
     private HeaderUtils() {
@@ -150,6 +153,7 @@ final class HeaderUtils {
             @Nullable
             @Override
             public Object mapOnNext(@Nullable final Object next) {
+                LOGGER.error("insertTrailersMapper::mapOnNext {}", next);
                 if (next instanceof HttpHeaders) {
                     sawHeaders = true;
                 }
@@ -159,11 +163,13 @@ final class HeaderUtils {
             @Nullable
             @Override
             public Object mapOnError(final Throwable t) throws Throwable {
+                LOGGER.error("insertTrailersMapper::mapOnError", t);
                 throw t;
             }
 
             @Override
             public Object mapOnComplete() {
+                LOGGER.error("insertTrailersMapper::mapOnComplete");
                 return EmptyHttpHeaders.INSTANCE;
             }
 
