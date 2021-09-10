@@ -41,6 +41,8 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelOutboundHandlerAdapter;
 import io.netty.channel.ChannelPromise;
 import io.netty.util.concurrent.PromiseCombiner;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Map;
 
@@ -67,6 +69,7 @@ import static java.lang.Math.max;
 import static java.nio.charset.StandardCharsets.US_ASCII;
 
 abstract class HttpObjectEncoder<T extends HttpMetaData> extends ChannelOutboundHandlerAdapter {
+    private static final Logger LOGGER = LoggerFactory.getLogger(HttpObjectEncoder.class);
     static final int CRLF_SHORT = (CR << 8) | LF;
     private static final int ZERO_CRLF_MEDIUM = ('0' << 16) | CRLF_SHORT;
     private static final byte[] ZERO_CRLF_CRLF = {'0', CR, LF, CR, LF};
@@ -116,6 +119,7 @@ abstract class HttpObjectEncoder<T extends HttpMetaData> extends ChannelOutbound
 
     @Override
     public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) {
+        LOGGER.error("write ch={} evt={}", ctx.channel(), msg);
         if (msg instanceof HttpMetaData) {
             if (state != ST_INIT) {
                 throw new IllegalStateException("unexpected message type: " + simpleClassName(msg));

@@ -16,6 +16,10 @@
 
 apply plugin: "io.servicetalk.servicetalk-gradle-plugin-internal-library"
 
+test {
+  outputs.upToDateWhen { false }
+}
+
 dependencies {
   api project(":servicetalk-concurrent-api")
   api project(":servicetalk-logging-api")
