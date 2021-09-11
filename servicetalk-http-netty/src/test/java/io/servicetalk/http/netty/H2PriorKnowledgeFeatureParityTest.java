@@ -57,6 +57,7 @@ import io.servicetalk.transport.api.ConnectionContext;
 import io.servicetalk.transport.api.DelegatingConnectionAcceptor;
 import io.servicetalk.transport.api.HostAndPort;
 import io.servicetalk.transport.api.ServerContext;
+import io.servicetalk.transport.netty.internal.CloseHandler.CloseEventObservedException;
 import io.servicetalk.transport.netty.internal.NettyConnectionContext;
 
 import io.netty.bootstrap.ServerBootstrap;
@@ -68,7 +69,6 @@ import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelPipeline;
 import io.netty.channel.EventLoopGroup;
-import io.netty.handler.codec.DecoderException;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http2.DefaultHttp2DataFrame;
 import io.netty.handler.codec.http2.DefaultHttp2Headers;
@@ -140,6 +140,7 @@ import static io.servicetalk.http.netty.HttpTestExecutionStrategy.NO_OFFLOAD;
 import static io.servicetalk.test.resources.TestUtils.assertNoAsyncErrors;
 import static io.servicetalk.transport.netty.internal.AddressUtils.localAddress;
 import static io.servicetalk.transport.netty.internal.BuilderUtils.serverChannel;
+import static io.servicetalk.transport.netty.internal.CloseHandler.CloseEvent.CHANNEL_CLOSED_INBOUND;
 import static io.servicetalk.transport.netty.internal.NettyIoExecutors.createIoExecutor;
 import static java.lang.String.valueOf;
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -795,11 +796,13 @@ class H2PriorKnowledgeFeatureParityTest {
                         instanceOf(Http2Exception.class));
             } else {
                 try (ReservedBlockingHttpConnection reservedConn = client.reserveConnection(request)) {
-                    assertThrows(DecoderException.class, () -> {
+                    CloseEventObservedException e = assertThrows(CloseEventObservedException.class, () -> {
                         // Either the current request or the next one should fail
                         reservedConn.request(request);
                         reservedConn.request(client.get("/"));
                     });
+                    // The encoder protects against invalid content length.
+                    assertThat(e.event(), is(CHANNEL_CLOSED_INBOUND));
                 }
             }
         }

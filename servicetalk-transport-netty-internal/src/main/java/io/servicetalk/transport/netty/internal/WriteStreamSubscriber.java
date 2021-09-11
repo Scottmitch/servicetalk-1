@@ -345,7 +345,7 @@ final class WriteStreamSubscriber implements PublisherSource.Subscriber<Object>,
 
         boolean isWritable() {
             assert channel.eventLoop().inEventLoop();
-            return state == 0;  // if any of the flags set, it's non-writable
+            return state == 0 || (state & SOURCE_TERMINATED) == SOURCE_TERMINATED;
         }
 
         void writeNext(Object msg) {

@@ -44,6 +44,7 @@ import io.netty.util.concurrent.PromiseCombiner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.util.Map;
 
 import static io.netty.buffer.ByteBufUtil.writeMediumBE;
@@ -64,6 +65,7 @@ import static io.servicetalk.http.api.HeaderUtils.isTransferEncodingChunked;
 import static io.servicetalk.http.api.HttpHeaderNames.CONTENT_LENGTH;
 import static io.servicetalk.http.api.HttpProtocolVersion.HTTP_1_1;
 import static io.servicetalk.http.netty.HttpKeepAlive.shouldClose;
+import static io.servicetalk.http.netty.HttpObjectDecoder.getContentLength;
 import static java.lang.Long.toHexString;
 import static java.lang.Math.max;
 import static java.nio.charset.StandardCharsets.US_ASCII;
@@ -71,6 +73,9 @@ import static java.nio.charset.StandardCharsets.US_ASCII;
 abstract class HttpObjectEncoder<T extends HttpMetaData> extends ChannelOutboundHandlerAdapter {
     private static final Logger LOGGER = LoggerFactory.getLogger(HttpObjectEncoder.class);
     static final int CRLF_SHORT = (CR << 8) | LF;
+    private static final long CONTENT_LEN_INIT = Long.MIN_VALUE;
+    private static final long CONTENT_LEN_DONE = Long.MIN_VALUE + 1;
+    private static final long CONTENT_LEN_LARGEST_VALUE = CONTENT_LEN_DONE;
     private static final int ZERO_CRLF_MEDIUM = ('0' << 16) | CRLF_SHORT;
     private static final byte[] ZERO_CRLF_CRLF = {'0', CR, LF, CR, LF};
     private static final ByteBuf CRLF_BUF = unreleasableBuffer(directBuffer(2).writeByte(CR).writeByte(LF));
@@ -88,6 +93,7 @@ abstract class HttpObjectEncoder<T extends HttpMetaData> extends ChannelOutbound
 
     @SuppressWarnings("RedundantFieldInitialization")
     private int state = ST_INIT;
+    private long contentLength = CONTENT_LEN_INIT;
 
     /**
      * Used to calculate an exponential moving average of the encoded size of the initial line and the headers for
@@ -145,6 +151,18 @@ abstract class HttpObjectEncoder<T extends HttpMetaData> extends ChannelOutbound
 
                 sanitizeHeadersBeforeEncode(metaData, state);
 
+                if (state == ST_CONTENT_NON_CHUNK) {
+                    contentLength = getContentLength(metaData);
+                    assert contentLength > CONTENT_LEN_LARGEST_VALUE;
+                    if (contentLength == 0) {
+                        contentLength = CONTENT_LEN_DONE;
+                        closeHandler.protocolPayloadEndOutbound(ctx, promise);
+                    }
+                } else if (state == ST_CONTENT_ALWAYS_EMPTY) {
+                    contentLength = CONTENT_LEN_DONE;
+                    closeHandler.protocolPayloadEndOutbound(ctx, promise);
+                }
+
                 encodeHeaders(metaData.headers(), byteBuf, stBuf);
                 writeShortBE(byteBuf, CRLF_SHORT);
                 headersEncodedSizeAccumulator = HEADERS_WEIGHT_NEW * padSizeForAccumulation(byteBuf.readableBytes()) +
@@ -152,8 +170,10 @@ abstract class HttpObjectEncoder<T extends HttpMetaData> extends ChannelOutbound
             } catch (Throwable e) {
                 // Encoding of meta-data can fail or cause expansion of the initial ByteBuf capacity that can fail
                 byteBuf.release();
-                throw e;
+                fireIoException(ctx, e, promise);
+                return;
             }
+
             ctx.write(byteBuf, promise);
         } else if (msg instanceof Buffer) {
             final Buffer stBuffer = (Buffer) msg;
@@ -173,6 +193,16 @@ abstract class HttpObjectEncoder<T extends HttpMetaData> extends ChannelOutbound
                     case ST_CONTENT_NON_CHUNK:
                         final long contentLength = stBuffer.readableBytes();
                         if (contentLength > 0) {
+                            // this.contentLength may be -1 if there is no content-length or transfer-encoding, so let
+                            // this pass through, but if this.contentLength would go negative (or already zeroed) fail.
+                            if (this.contentLength <= CONTENT_LEN_LARGEST_VALUE ||
+                                    this.contentLength >= 0 && (this.contentLength -= contentLength) < 0) {
+                                fireIllegalContentLength(ctx, contentLength, promise);
+                                return;
+                            } else if (this.contentLength == 0) {
+                                this.contentLength = CONTENT_LEN_DONE;
+                                closeHandler.protocolPayloadEndOutbound(ctx, promise);
+                            }
                             ctx.write(encodeAndRetain(stBuffer), promise);
                             break;
                         }
@@ -196,15 +226,30 @@ abstract class HttpObjectEncoder<T extends HttpMetaData> extends ChannelOutbound
                 }
             }
         } else if (msg instanceof HttpHeaders) {
-            closeHandler.protocolPayloadEndOutbound(ctx, promise);
-            final int oldState = state;
+            final boolean isChunked = state == ST_CONTENT_CHUNK;
             state = ST_INIT;
-            if (oldState == ST_CONTENT_CHUNK) {
+            if (isChunked) {
+                closeHandler.protocolPayloadEndOutbound(ctx, promise);
                 encodeAndWriteTrailers(ctx, (HttpHeaders) msg, promise);
             } else {
+                if (contentLength != CONTENT_LEN_DONE) {
+                    closeHandler.protocolPayloadEndOutbound(ctx, promise);
+                }
+                contentLength = CONTENT_LEN_INIT;
                 ctx.write(EMPTY_BUFFER, promise);
             }
         }
+    }
+
+    private void fireIllegalContentLength(ChannelHandlerContext ctx, long contentLength, ChannelPromise promise) {
+        promise.setFailure(new IOException("payload body size exceeded content-length header. remainder: " +
+                ((this.contentLength <= CONTENT_LEN_LARGEST_VALUE) ? 0 : this.contentLength + contentLength) +
+                " chunk: " + contentLength + " channel: " + ctx.channel()));
+    }
+
+    private static void fireIoException(ChannelHandlerContext ctx, Throwable e, ChannelPromise promise) {
+        promise.setFailure(e instanceof IOException ? e :
+                new IOException("unexpected exception while encoding on channel: " + ctx.channel(), e));
     }
 
     /**

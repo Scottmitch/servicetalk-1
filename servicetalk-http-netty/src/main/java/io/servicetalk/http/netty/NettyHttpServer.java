@@ -68,6 +68,7 @@ import io.netty.handler.codec.DecoderException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.net.SocketAddress;
 import java.net.SocketOption;
 import java.nio.channels.ClosedChannelException;
@@ -578,22 +579,29 @@ final class NettyHttpServer {
                 final CloseEventObservedException ceoe = (CloseEventObservedException) t;
                 if (ceoe.event() == CHANNEL_CLOSED_INBOUND && t.getCause() instanceof ClosedChannelException) {
                     LOGGER.trace("Client closed the connection without sending 'Connection: close' header", t);
-                    return;
-                }
-                if (t.getCause() instanceof DecoderException) {
+                } else if (t.getCause() instanceof DecoderException) {
                     logDecoderException((DecoderException) t.getCause());
-                    return;
+                } else if (t.getCause() instanceof IOException) {
+                    logIoException((IOException) t.getCause());
+                } else {
+                    LOGGER.debug("Unexpected close event, no more requests will be received on this connection.", t);
                 }
             } else if (t instanceof DecoderException) {
                 logDecoderException((DecoderException) t);
-                return;
+            } else if (t instanceof IOException) {
+                logIoException((IOException) t);
+            } else {
+                LOGGER.debug("Unexpected error received while processing connection, no more requests will be received "
+                        + "on this connection.", t);
             }
-            LOGGER.debug("Unexpected error received while processing connection, {}",
-                    "no more requests will be received on this connection.", t);
         }
 
         private static void logDecoderException(final DecoderException e) {
-            LOGGER.warn("Can not decode HTTP message, no more requests will be received on this connection.", e);
+            LOGGER.info("Can not decode HTTP message, no more requests will be received on this connection.", e);
+        }
+
+        private static void logIoException(final IOException e) {
+            LOGGER.info("No more requests will be received on this connection.", e);
         }
     }
 }
