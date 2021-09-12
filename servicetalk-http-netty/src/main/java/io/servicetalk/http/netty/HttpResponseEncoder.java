@@ -98,6 +98,11 @@ final class HttpResponseEncoder extends HttpObjectEncoder<HttpResponseMetaData> 
     }
 
     @Override
+    protected long getContentLength(final HttpResponseMetaData message) {
+        return HttpObjectDecoder.getContentLength(message);
+    }
+
+    @Override
     protected void sanitizeHeadersBeforeEncode(HttpResponseMetaData msg, boolean isAlwaysEmpty) {
         // This method has side effects on the methodQueue for the following reasons:
         // - createMessage will not necessary fire a message up the pipeline.

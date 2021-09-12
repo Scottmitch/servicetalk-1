@@ -39,6 +39,7 @@ import java.util.Queue;
 
 import static io.netty.handler.codec.http.HttpConstants.SP;
 import static io.servicetalk.http.api.HttpProtocolVersion.HTTP_1_1;
+import static io.servicetalk.http.netty.HeaderUtils.shouldAddZeroContentLength;
 import static io.servicetalk.transport.netty.internal.CloseHandler.UNSUPPORTED_PROTOCOL_CLOSE_HANDLER;
 import static java.util.Objects.requireNonNull;
 
@@ -144,5 +145,11 @@ final class HttpRequestEncoder extends HttpObjectEncoder<HttpRequestMetaData> {
         // if this happens just force http/1.1 to avoid generating an invalid request.
         (message.version().major() == 1 ? message.version() : HTTP_1_1).writeTo(stBuffer);
         stBuffer.writeShort(CRLF_SHORT);
+    }
+
+    @Override
+    protected long getContentLength(final HttpRequestMetaData message) {
+        final long len = HttpObjectDecoder.getContentLength(message);
+        return len < 0 && shouldAddZeroContentLength(message.method()) ? 0 : len;
     }
 }

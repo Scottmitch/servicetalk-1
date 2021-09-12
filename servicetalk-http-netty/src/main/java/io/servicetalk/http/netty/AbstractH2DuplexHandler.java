@@ -44,7 +44,6 @@ import static io.servicetalk.http.netty.NettyHttp2ExceptionUtils.newStreamResetE
 import static io.servicetalk.transport.netty.internal.ChannelCloseUtils.channelError;
 
 abstract class AbstractH2DuplexHandler extends ChannelDuplexHandler {
-
     final BufferAllocator allocator;
     final HttpHeadersFactory headersFactory;
     final CloseHandler closeHandler;
@@ -81,6 +80,9 @@ abstract class AbstractH2DuplexHandler extends ChannelDuplexHandler {
         if (buffer.readableBytes() > 0) {
             ctx.write(new DefaultHttp2DataFrame(encodeAndRetain(buffer), false), promise);
         } else {
+            // todo(scott) this may complete promises out of order if there are prior writes pending. can we do
+            //  the following instead:
+            // ctx.write(EmptyBuffer.EMPTY_BUFFER, promise);
             promise.setSuccess();
         }
     }

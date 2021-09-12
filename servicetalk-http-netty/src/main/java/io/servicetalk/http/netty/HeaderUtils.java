@@ -110,6 +110,17 @@ final class HeaderUtils {
                 !hasContentHeaders(metadata.headers());
     }
 
+    private static boolean shouldAppendTrailers(final HttpProtocolVersion protocolVersion) {
+
+        // Always include trailers for h2 because trailers are allowed even if content-length is present, so we use
+        // trailers as a token to know the stream is done (even if they are empty).
+        return protocolVersion.major() != 1;
+    }
+
+    static boolean shouldAppendTrailers(final HttpProtocolVersion protocolVersion, final HttpHeaders headers) {
+        return shouldAppendTrailers(protocolVersion) || !headers.contains(CONTENT_LENGTH);
+    }
+
     static Publisher<Object> setRequestContentLength(final HttpProtocolVersion protocolVersion,
                                                      final StreamingHttpRequest request) {
         return setContentLength(request, request.messageBody(),
@@ -145,11 +156,11 @@ final class HeaderUtils {
         return !isEmptyResponseStatus(statusCode) && !isEmptyConnectResponse(requestMethod, statusCode);
     }
 
-    static ScanWithMapper<Object, Object> insertTrailersMapper() {
-        return insertTrailersMapper(null);
+    static ScanWithMapper<Object, Object> appendTrailersMapper() {
+        return appendTrailersMapper(null);
     }
 
-    static ScanWithMapper<Object, Object> insertTrailersMapper(@Nullable Object state) {
+    static ScanWithMapper<Object, Object> appendTrailersMapper(@Nullable Object state) {
         return new ScanWithMapper<Object, Object>() {
 
             private boolean sawHeaders;
@@ -197,7 +208,8 @@ final class HeaderUtils {
         assert emptyMessageBody(metadata, messageBody);
         // HTTP/2 and above can write meta-data as a single frame with endStream=true flag. To check the version, use
         // HttpProtocolVersion from ConnectionInfo because HttpMetaData may have different version.
-        final Publisher<Object> flatMessage = protocolVersion.major() > 1 ? from(metadata) :
+        final Publisher<Object> flatMessage = protocolVersion.major() > 1 ||
+                !shouldAppendTrailers(protocolVersion, metadata.headers()) ? from(metadata) :
                 from(metadata, EmptyHttpHeaders.INSTANCE);
         return messageBody == empty() ? flatMessage :
                 // Subscribe to the messageBody publisher to trigger any applied transformations, but ignore its
@@ -233,12 +245,16 @@ final class HeaderUtils {
         }).flatMapPublisher(reduction -> {
             int contentLength = 0;
             final Publisher<Object> flatRequest;
+            // We will insert content-length header but haven't yet because we need to compute the value. So no need
+            // to pass headers to determine if trailers should be appended.
+            final boolean appendTrailers = shouldAppendTrailers(protocolVersion);
             if (reduction == null) {
-                flatRequest = from(metadata, EmptyHttpHeaders.INSTANCE);
+                flatRequest = appendTrailers ? from(metadata, EmptyHttpHeaders.INSTANCE) : from(metadata);
             } else if (reduction instanceof Buffer) {
                 final Buffer buffer = (Buffer) reduction;
                 contentLength = buffer.readableBytes();
-                flatRequest = from(metadata, buffer, EmptyHttpHeaders.INSTANCE);
+                flatRequest = appendTrailers ? from(metadata, buffer, EmptyHttpHeaders.INSTANCE) :
+                        from(metadata, buffer);
             } else if (reduction instanceof List) {
                 @SuppressWarnings("unchecked")
                 final List<Object> items = (List<Object>) reduction;
@@ -247,7 +263,7 @@ final class HeaderUtils {
                         contentLength += ((Buffer) item).readableBytes();
                     }
                 }
-                if (!(items.get(items.size() - 1) instanceof HttpHeaders)) {
+                if (appendTrailers && !(items.get(items.size() - 1) instanceof HttpHeaders)) {
                     items.add(EmptyHttpHeaders.INSTANCE);
                 }
                 flatRequest = Publisher.<Object>from(metadata).concat(fromIterable(items));

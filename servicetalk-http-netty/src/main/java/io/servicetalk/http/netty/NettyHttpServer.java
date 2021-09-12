@@ -81,6 +81,7 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import javax.net.ssl.SSLSession;
 
+import static io.servicetalk.buffer.api.CharSequences.contentEquals;
 import static io.servicetalk.buffer.netty.BufferUtils.getByteBufAllocator;
 import static io.servicetalk.concurrent.api.AsyncCloseables.newCompositeCloseable;
 import static io.servicetalk.concurrent.api.AsyncCloseables.toListenableAsyncCloseable;
@@ -99,6 +100,7 @@ import static io.servicetalk.http.netty.HeaderUtils.canAddResponseContentLength;
 import static io.servicetalk.http.netty.HeaderUtils.emptyMessageBody;
 import static io.servicetalk.http.netty.HeaderUtils.flatEmptyMessage;
 import static io.servicetalk.http.netty.HeaderUtils.setResponseContentLength;
+import static io.servicetalk.http.netty.HeaderUtils.shouldAppendTrailers;
 import static io.servicetalk.http.netty.HttpDebugUtils.showPipeline;
 import static io.servicetalk.transport.netty.internal.CloseHandler.CloseEvent.CHANNEL_CLOSED_INBOUND;
 import static io.servicetalk.transport.netty.internal.CloseHandler.forPipelinedRequestResponse;
@@ -272,7 +274,9 @@ final class NettyHttpServer {
                     itemWritten -> {
                         if (itemWritten instanceof HttpResponseMetaData) {
                             final HttpResponseMetaData metadata = (HttpResponseMetaData) itemWritten;
-                            return protocol().major() > 1 && emptyMessageBody(metadata) ? End : Start;
+                            return (protocol().major() <= 1 &&
+                                        contentEquals(ZERO, metadata.headers().get(CONTENT_LENGTH))) ||
+                                    (protocol().major() > 1 && emptyMessageBody(metadata)) ? End : Start;
                         }
                         if (itemWritten instanceof HttpHeaders) {
                             return End;
@@ -394,11 +398,16 @@ final class NettyHttpServer {
             if (canAddResponseContentLength(response, requestMethod)) {
                 return setResponseContentLength(protocolVersion, response);
             } else {
-                final Publisher<Object> flatResponse = emptyMessageBody(response, response.messageBody()) ?
-                        flatEmptyMessage(protocolVersion, response, response.messageBody()) :
-                        // Not necessary to defer subscribe to the messageBody because server does not retry responses
-                        Single.<Object>succeeded(response).concat(response.messageBody())
-                                .scanWith(HeaderUtils::insertTrailersMapper);
+                Publisher<Object> flatResponse;
+                if (emptyMessageBody(response, response.messageBody())) {
+                    flatResponse = flatEmptyMessage(protocolVersion, response, response.messageBody());
+                } else {
+                    // Not necessary to defer subscribe to the messageBody because server does not retry responses
+                    flatResponse = Single.<Object>succeeded(response).concat(response.messageBody());
+                    if (shouldAppendTrailers(protocolVersion, response.headers())) {
+                        flatResponse = flatResponse.scanWith(HeaderUtils::appendTrailersMapper);
+                    }
+                }
                 addResponseTransferEncodingIfNecessary(response, requestMethod);
                 return flatResponse;
             }
