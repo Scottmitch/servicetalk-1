@@ -163,13 +163,13 @@ class RequestResponseCloseHandler extends CloseHandler {
     }
 
     @Override
-    public void protocolPayloadEndInbound(final ChannelHandlerContext ctx) {
-        LOGGER.error("protocolPayloadEndInbound ch={} state={} closeEvent={}", ctx.channel(), state, closeEvent);
-        assert ctx.executor().inEventLoop();
+    public void protocolPayloadEndInbound(final Channel channel) {
+        LOGGER.error("protocolPayloadEndInbound ch={} state={} closeEvent={}", channel, state, closeEvent);
+        assert channel.eventLoop().inEventLoop();
         state = unset(state, READ);
         final CloseEvent evt = this.closeEvent;
         if (evt != null) {
-            closeChannelHalfOrFullyOnPayloadEnd(ctx.channel(), evt, true);
+            closeChannelHalfOrFullyOnPayloadEnd(channel, evt, true);
         }
     }
 
@@ -447,9 +447,8 @@ class RequestResponseCloseHandler extends CloseHandler {
             // DuplexChannel.shutdownInput() silently discards all incoming data at OS level and does not notify netty
             // when the FIN is received.
             LOGGER.debug("{} Discarding further INBOUND", channel);
-            state = unset(state, READ);
+            state = set(unset(state, READ), DISCARDING_SERVER_INPUT);
             channel.pipeline().fireUserEventTriggered(DiscardFurtherInboundEvent.INSTANCE);
-            state = set(state, DISCARDING_SERVER_INPUT);
         }
     }
 

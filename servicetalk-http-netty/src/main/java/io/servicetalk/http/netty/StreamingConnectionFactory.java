@@ -53,7 +53,7 @@ final class StreamingConnectionFactory {
     static Single<? extends DefaultNettyConnection<Object, Object>> createConnection(final Channel channel,
             final HttpExecutionContext executionContext, final ReadOnlyHttpClientConfig config,
             final ChannelInitializer initializer, final ConnectionObserver connectionObserver) {
-        final CloseHandler closeHandler = forPipelinedRequestResponse(true, channel.config());
+        final CloseHandler closeHandler = forPipelinedRequestResponse(true, channel);
         assert config.h1Config() != null;
         return showPipeline(DefaultNettyConnection.initChannel(channel, executionContext.bufferAllocator(),
                 executionContext.executor(), executionContext.ioExecutor(),

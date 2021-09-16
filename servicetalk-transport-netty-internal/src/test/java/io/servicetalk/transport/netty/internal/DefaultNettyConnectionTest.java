@@ -246,7 +246,7 @@ class DefaultNettyConnectionTest {
 
     @Test
     void testOnClosingWithGracefulClose() throws Exception {
-        setupWithCloseHandler(ch -> forPipelinedRequestResponse(true, ch.config()));
+        setupWithCloseHandler(ch -> forPipelinedRequestResponse(true, ch));
         toSource(conn.onClosing()).subscribe(closeListener);
         conn.closeAsyncGracefully().toFuture().get();
         closeListener.awaitOnComplete();
@@ -254,7 +254,7 @@ class DefaultNettyConnectionTest {
 
     @Test
     void testOnClosingWithHardClose() throws Exception {
-        setupWithCloseHandler(ch -> forPipelinedRequestResponse(true, ch.config()));
+        setupWithCloseHandler(ch -> forPipelinedRequestResponse(true, ch));
         toSource(conn.onClosing()).subscribe(closeListener);
         conn.closeAsync().toFuture().get();
         closeListener.awaitOnComplete();
@@ -262,7 +262,7 @@ class DefaultNettyConnectionTest {
 
     @Test
     void testOnClosingWithoutUserInitiatedClose() throws Exception {
-        setupWithCloseHandler(ch -> forPipelinedRequestResponse(true, ch.config()));
+        setupWithCloseHandler(ch -> forPipelinedRequestResponse(true, ch));
         toSource(conn.onClosing()).subscribe(closeListener);
         channel.close().get(); // Close and await closure.
         closeListener.awaitOnComplete();
@@ -301,7 +301,7 @@ class DefaultNettyConnectionTest {
 
     @Test
     void testErrorEnrichmentWithCloseHandlerOnWriteError() throws Exception {
-        setupWithCloseHandler(ch -> forPipelinedRequestResponse(true, ch.config()));
+        setupWithCloseHandler(ch -> forPipelinedRequestResponse(true, ch));
         channel.shutdownOutput().sync();
         assertThat(channel.isActive(), is(false));
         toSource(conn.write(publisher)).subscribe(writeListener);
@@ -319,7 +319,7 @@ class DefaultNettyConnectionTest {
 
     @Test
     void testTerminalPredicateThrowTerminatesReadPublisher() throws Exception {
-        setupWithCloseHandler(ch -> forPipelinedRequestResponse(true, ch.config()));
+        setupWithCloseHandler(ch -> forPipelinedRequestResponse(true, ch));
         toSource(conn.read()).subscribe(subscriber);
         subscriber.awaitSubscription().request(1);
         channel.writeInbound(allocator.fromAscii("DELIBERATE_EXCEPTION"));
@@ -346,7 +346,7 @@ class DefaultNettyConnectionTest {
         AtomicInteger taskSubmitted = new AtomicInteger();
         ExecutorService executor = java.util.concurrent.Executors.newCachedThreadPool();
         try {
-            setupWithCloseHandler(ch -> forPipelinedRequestResponse(true, ch.config()), from(task -> {
+            setupWithCloseHandler(ch -> forPipelinedRequestResponse(true, ch), from(task -> {
                 taskSubmitted.incrementAndGet();
                 executor.submit(task);
             }));

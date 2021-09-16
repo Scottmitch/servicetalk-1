@@ -90,7 +90,6 @@ import static java.nio.charset.StandardCharsets.US_ASCII;
 import static java.util.Objects.requireNonNull;
 
 abstract class HttpObjectDecoder<T extends HttpMetaData> extends ByteToMessageDecoder {
-    private static final Logger LOGGER = LoggerFactory.getLogger(HttpObjectDecoder.class);
     private static final long HTTP_VERSION_FORMAT = 0x485454502f312e00L;    // HEX representation of "HTTP/1.x"
     private static final long HTTP_VERSION_MASK = 0xffffffffffffff00L;
     private static final ByteProcessor SKIP_PREFACING_CRLF = value -> {
@@ -288,7 +287,7 @@ abstract class HttpObjectDecoder<T extends HttpMetaData> extends ByteToMessageDe
 
                 message = createMessage(buffer, aStart, aEnd - aStart, bStart, bEnd - bStart, cStart, cLength);
                 currentState = State.READ_HEADER;
-                closeHandler.protocolPayloadBeginInbound(ctx);
+                closeHandler.protocolPayloadBeginInbound();
                 // fall-through
             }
             case READ_HEADER: {
@@ -298,7 +297,7 @@ abstract class HttpObjectDecoder<T extends HttpMetaData> extends ByteToMessageDe
                 }
                 assert message != null;
                 if (shouldClose(message)) {
-                    closeHandler.protocolClosingInbound(ctx);
+                    closeHandler.protocolClosingInbound();
                 }
                 currentState = nextState;
                 switch (nextState) {
@@ -307,7 +306,7 @@ abstract class HttpObjectDecoder<T extends HttpMetaData> extends ByteToMessageDe
                         // No content is expected.
                         ctx.fireChannelRead(message);
                         ctx.fireChannelRead(EmptyHttpHeaders.INSTANCE);
-                        closeHandler.protocolPayloadEndInbound(ctx);
+                        // closeHandler.protocolPayloadEndInbound(ctx);
                         resetNow();
                         return;
                     case READ_CHUNK_SIZE:
@@ -324,7 +323,7 @@ abstract class HttpObjectDecoder<T extends HttpMetaData> extends ByteToMessageDe
                         if (contentLength == 0 || contentLength == -1 && isDecodingRequest()) {
                             ctx.fireChannelRead(message);
                             ctx.fireChannelRead(EmptyHttpHeaders.INSTANCE);
-                            closeHandler.protocolPayloadEndInbound(ctx);
+                            // closeHandler.protocolPayloadEndInbound(ctx);
                             resetNow();
                             return;
                         }
@@ -381,7 +380,7 @@ abstract class HttpObjectDecoder<T extends HttpMetaData> extends ByteToMessageDe
                     // This is not chunked encoding so there will not be any trailers.
                     ctx.fireChannelRead(newBufferFrom(content));
                     ctx.fireChannelRead(EmptyHttpHeaders.INSTANCE);
-                    closeHandler.protocolPayloadEndInbound(ctx);
+                    // closeHandler.protocolPayloadEndInbound(ctx);
                     resetNow();
                 } else {
                     ctx.fireChannelRead(newBufferFrom(content));
@@ -440,7 +439,7 @@ abstract class HttpObjectDecoder<T extends HttpMetaData> extends ByteToMessageDe
                     return;
                 }
                 ctx.fireChannelRead(trailer);
-                closeHandler.protocolPayloadEndInbound(ctx);
+                // closeHandler.protocolPayloadEndInbound(ctx);
                 resetNow();
                 return;
             }
@@ -488,7 +487,7 @@ abstract class HttpObjectDecoder<T extends HttpMetaData> extends ByteToMessageDe
                     (currentState == State.READ_CHUNK_SIZE && chunked && allowPrematureClosureBeforePayloadBody))) {
                 // End of connection.
                 ctx.fireChannelRead(EmptyHttpHeaders.INSTANCE);
-                closeHandler.protocolPayloadEndInbound(ctx);
+                // closeHandler.protocolPayloadEndInbound(ctx);
                 resetNow();
                 return;
             }
@@ -516,7 +515,7 @@ abstract class HttpObjectDecoder<T extends HttpMetaData> extends ByteToMessageDe
 
             if (!prematureClosure) {
                 ctx.fireChannelRead(EmptyHttpHeaders.INSTANCE);
-                closeHandler.protocolPayloadEndInbound(ctx);
+                // closeHandler.protocolPayloadEndInbound(ctx);
             }
             resetNow();
         }

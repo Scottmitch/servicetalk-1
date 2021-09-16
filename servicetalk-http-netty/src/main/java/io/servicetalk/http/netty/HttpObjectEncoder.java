@@ -52,7 +52,6 @@ import java.util.Map;
 
 import static io.netty.buffer.ByteBufUtil.writeMediumBE;
 import static io.netty.buffer.ByteBufUtil.writeShortBE;
-import static io.netty.buffer.Unpooled.EMPTY_BUFFER;
 import static io.netty.buffer.Unpooled.directBuffer;
 import static io.netty.buffer.Unpooled.unreleasableBuffer;
 import static io.netty.buffer.Unpooled.wrappedBuffer;
@@ -137,9 +136,9 @@ abstract class HttpObjectEncoder<T extends HttpMetaData> extends ChannelOutbound
 
             T metaData = castMetaData(msg);
             LOGGER.error("write ch={} hdrs={}", ctx.channel(), metaData.toString((k, v) -> v));
-            closeHandler.protocolPayloadBeginOutbound(ctx);
+            closeHandler.protocolPayloadBeginOutbound();
             if (shouldClose(metaData)) {
-                closeHandler.protocolClosingOutbound(ctx);
+                closeHandler.protocolClosingOutbound();
             }
 
             // We prefer a direct allocation here because it is expected the resulted encoded Buffer will be written
@@ -153,7 +152,7 @@ abstract class HttpObjectEncoder<T extends HttpMetaData> extends ChannelOutbound
                 encodeInitialLine(stBuf, metaData);
                 if (isContentAlwaysEmpty(metaData)) {
                     state = CONTENT_LEN_EMPTY;
-                    closeHandler.protocolPayloadEndOutbound(ctx, promise);
+                    closeHandler.protocolPayloadEndOutbound(promise);
                 } else if (isTransferEncodingChunked(metaData.headers())) {
                     state = CONTENT_LEN_CHUNKED;
                 } else {
@@ -161,7 +160,7 @@ abstract class HttpObjectEncoder<T extends HttpMetaData> extends ChannelOutbound
                     assert state > CONTENT_LEN_LARGEST_VALUE;
                     if (state == 0) {
                         state = CONTENT_LEN_CONSUMED;
-                        closeHandler.protocolPayloadEndOutbound(ctx, promise);
+                        closeHandler.protocolPayloadEndOutbound(promise);
                     }
                 }
 
@@ -183,14 +182,7 @@ abstract class HttpObjectEncoder<T extends HttpMetaData> extends ChannelOutbound
             final Buffer stBuffer = (Buffer) msg;
             final long contentLength = stBuffer.readableBytes();
             if (contentLength <= 0) {
-                // Bypass the encoder in case of an empty buffer, so that the following idiom works:
-                //
-                //     ch.write(Unpooled.EMPTY_BUFFER).addListener(ChannelFutureListener.CLOSE);
-                //
-                // See https://github.com/netty/netty/issues/2983 for more information.
-                // We can directly write EMPTY_BUFFER here because there is no need to worry about the buffer being
-                // already released.
-                ctx.write(EMPTY_BUFFER, promise);
+                promise.setSuccess();
             } else if (state == CONTENT_LEN_CHUNKED) {
                 PromiseCombiner promiseCombiner = new PromiseCombiner(ctx.executor());
                 encodeChunkedContent(ctx, stBuffer, stBuffer.readableBytes(), promiseCombiner);
@@ -202,7 +194,7 @@ abstract class HttpObjectEncoder<T extends HttpMetaData> extends ChannelOutbound
             } else {
                 if (state == 0) {
                     state = CONTENT_LEN_CONSUMED;
-                    closeHandler.protocolPayloadEndOutbound(ctx, promise);
+                    closeHandler.protocolPayloadEndOutbound(promise);
                 }
                 ctx.write(encodeAndRetain(stBuffer), promise);
             }
@@ -211,7 +203,7 @@ abstract class HttpObjectEncoder<T extends HttpMetaData> extends ChannelOutbound
             state = CONTENT_LEN_INIT;
             final HttpHeaders trailers = (HttpHeaders) msg;
             if (isChunked) {
-                closeHandler.protocolPayloadEndOutbound(ctx, promise);
+                closeHandler.protocolPayloadEndOutbound(promise);
                 encodeAndWriteTrailers(ctx, trailers, promise);
             } else if (!trailers.isEmpty()) {
                 tryFailNonEmptyTrailers(ctx, trailers, promise);
@@ -220,10 +212,10 @@ abstract class HttpObjectEncoder<T extends HttpMetaData> extends ChannelOutbound
             } else {
                 // Allow trailers to be written as a marker indicating the request is done.
                 if (state != CONTENT_LEN_CONSUMED) {
-                    closeHandler.protocolPayloadEndOutbound(ctx, promise);
+                    closeHandler.protocolPayloadEndOutbound(promise);
                 }
                 state = CONTENT_LEN_INIT;
-                ctx.write(EMPTY_BUFFER, promise);
+                promise.setSuccess();
             }
         }
     }

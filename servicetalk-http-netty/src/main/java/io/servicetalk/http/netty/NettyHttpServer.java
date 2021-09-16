@@ -15,6 +15,7 @@
  */
 package io.servicetalk.http.netty;
 
+import io.servicetalk.buffer.api.Buffer;
 import io.servicetalk.concurrent.Cancellable;
 import io.servicetalk.concurrent.CompletableSource;
 import io.servicetalk.concurrent.CompletableSource.Processor;
@@ -60,6 +61,7 @@ import io.servicetalk.transport.netty.internal.FlushStrategy;
 import io.servicetalk.transport.netty.internal.NettyConnection;
 import io.servicetalk.transport.netty.internal.NettyConnectionContext;
 import io.servicetalk.transport.netty.internal.SplittingFlushStrategy;
+import io.servicetalk.transport.netty.internal.SplittingFlushStrategy.FlushBoundaryProvider;
 
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.channel.Channel;
@@ -81,7 +83,6 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import javax.net.ssl.SSLSession;
 
-import static io.servicetalk.buffer.api.CharSequences.contentEquals;
 import static io.servicetalk.buffer.netty.BufferUtils.getByteBufAllocator;
 import static io.servicetalk.concurrent.api.AsyncCloseables.newCompositeCloseable;
 import static io.servicetalk.concurrent.api.AsyncCloseables.toListenableAsyncCloseable;
@@ -153,7 +154,7 @@ final class NettyHttpServer {
                                                          final boolean drainRequestPayloadBody,
                                                          final ConnectionObserver observer) {
         return initChannel(channel, httpExecutionContext, config, initializer, service, drainRequestPayloadBody,
-                observer, forPipelinedRequestResponse(false, channel.config()));
+                observer, forPipelinedRequestResponse(false, channel));
     }
 
     private static Single<NettyHttpServerConnection> initChannel(final Channel channel,
@@ -250,6 +251,7 @@ final class NettyHttpServer {
         private final SplittingFlushStrategy splittingFlushStrategy;
         private final boolean drainRequestPayloadBody;
         private final boolean requireTrailerHeader;
+        private volatile boolean onClosing;
 
         NettyHttpServerConnection(final NettyConnection<Object, Object> connection,
                                   final StreamingHttpService service,
@@ -271,21 +273,30 @@ final class NettyHttpServer {
                     HttpExecutionStrategies.noOffloadsStrategy());
             this.service = service;
             this.splittingFlushStrategy = new SplittingFlushStrategy(connection.defaultFlushStrategy(),
-                    itemWritten -> {
-                        if (itemWritten instanceof HttpResponseMetaData) {
-                            final HttpResponseMetaData metadata = (HttpResponseMetaData) itemWritten;
-                            return (protocol().major() <= 1 &&
-                                        contentEquals(ZERO, metadata.headers().get(CONTENT_LENGTH))) ||
-                                    (protocol().major() > 1 && emptyMessageBody(metadata)) ? End : Start;
-                        }
-                        if (itemWritten instanceof HttpHeaders) {
-                            return End;
-                        }
-                        return InProgress;
-                    });
+                    new FlushBoundaryProvider() {
+                private long contentLength;
+                @Override
+                public FlushBoundary detectBoundary(@Nullable final Object itemWritten) {
+                    if (itemWritten instanceof HttpResponseMetaData) {
+                        final HttpResponseMetaData metadata = (HttpResponseMetaData) itemWritten;
+                        contentLength = protocol().major() <= 1 ? HttpObjectDecoder.getContentLength(metadata) :
+                                emptyMessageBody(metadata) ? 0 : -1;
+                        return contentLength == 0 ? End : Start;
+                    }
+                    if (itemWritten instanceof Buffer) {
+                        return contentLength > 0 && (contentLength -= ((Buffer) itemWritten).readableBytes()) <= 0 ?
+                                End : InProgress;
+                    }
+                    if (itemWritten instanceof HttpHeaders) {
+                        return End;
+                    }
+                    return InProgress;
+                }
+            });
             connection.updateFlushStrategy((current, isCurrentOriginal) -> splittingFlushStrategy);
             this.drainRequestPayloadBody = drainRequestPayloadBody;
             this.requireTrailerHeader = requireTrailerHeader;
+            onClosing().subscribe(() -> this.onClosing = true);
         }
 
         void process(final boolean handleMultipleRequests) {

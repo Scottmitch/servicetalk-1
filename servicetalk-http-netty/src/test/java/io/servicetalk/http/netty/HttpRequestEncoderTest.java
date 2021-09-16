@@ -419,7 +419,7 @@ class HttpRequestEncoderTest extends HttpEncoderTest<HttpRequestMetaData> {
             NettyConnection<Object, Object> conn = resources.prepend(
                     TcpConnector.connect(null, serverHostAndPort(serverContext), cConfig.tcpConfig(), false,
                             CEC, (channel, connectionObserver) -> {
-                                CloseHandler closeHandler = spy(forPipelinedRequestResponse(true, channel.config()));
+                                CloseHandler closeHandler = spy(forPipelinedRequestResponse(true, channel));
                                 closeHandlerRef.compareAndSet(null, closeHandler);
                                 return DefaultNettyConnection.initChannel(channel, CEC.bufferAllocator(),
                                         CEC.executor(), CEC.ioExecutor(),
@@ -462,7 +462,7 @@ class HttpRequestEncoderTest extends HttpEncoderTest<HttpRequestMetaData> {
             assertThrows(ExecutionException.class, () -> write.toFuture().get());
             CloseHandler closeHandler = closeHandlerRef.get();
             assertNotNull(closeHandler);
-            verify(closeHandler, never()).protocolPayloadEndOutbound(any(), any());
+            verify(closeHandler, never()).protocolPayloadEndOutbound(any());
         }
     }
 

@@ -123,7 +123,7 @@ abstract class AbstractH2DuplexHandler extends ChannelDuplexHandler {
             }
             if (dataFrame.isEndStream()) {
                 ctx.fireChannelRead(headersFactory.newEmptyTrailers());
-                closeHandler.protocolPayloadEndInbound(ctx);
+                // closeHandler.protocolPayloadEndInbound(ctx);
             }
         } finally {
             if (toRelease != null) {

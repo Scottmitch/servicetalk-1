@@ -236,24 +236,19 @@ class ServerRespondsOnClosingTest {
     private void verifyResponse(String requestPath) {
         // For chunked encoding 3 items are expected: meta-data, payload body, trailers
         // For content-length 2 items are expected: meta-data, payload body
-        int size = channel.outboundMessages().size();
+        final int size = channel.outboundMessages().size();
         assertThat("Not a full response was written", size, greaterThanOrEqualTo(2));
-        if (size >= 2) {
-            ByteBuf metaData = channel.readOutbound();
-            assertThat("Unexpected response meta-data", metaData.toString(US_ASCII), containsString(requestPath));
-            ByteBuf payloadBody = channel.readOutbound();
-            assertThat("Unexpected response payload body", payloadBody.toString(US_ASCII), equalTo(RESPONSE_PAYLOAD_BODY));
-        }
-        if (size >= 3) {
-            ByteBuf trailers = channel.readOutbound();
-            assertThat("Unexpected response trailers object", trailers.readableBytes(), is(0));
-        }
+        ByteBuf metaData = channel.readOutbound();
+        assertThat("Unexpected response meta-data", metaData.toString(US_ASCII), containsString(requestPath));
+        ByteBuf payloadBody = channel.readOutbound();
+        assertThat("Unexpected response payload body", payloadBody.toString(US_ASCII), equalTo(RESPONSE_PAYLOAD_BODY));
     }
 
-    private void respondWithFIN() {
+    private void respondWithFIN() throws InterruptedException {
         assertThat("Server did not shutdown output", channel.isOutputShutdown(), is(true));
-        // The server responds with content-length, and EmbeddedChannel is used the write completes synchronously, which
-        // will close the channel because the server completed the read/write.
+        // channel.shutdownInput().sync();    // simulate FIN from the client
+        // The server responds with content-length, and EmbeddedChannel completes writes synchronously, which will close
+        // the channel because the server completed the read/write.
         assertThat(channel.isOpen(), is(false));
     }
 

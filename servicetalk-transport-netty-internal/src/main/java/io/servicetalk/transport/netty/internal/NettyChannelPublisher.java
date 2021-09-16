@@ -126,11 +126,11 @@ final class NettyChannelPublisher<T> extends SubscribablePublisher<T> {
 
     private void exceptionCaught0(Throwable throwable) {
         assignConnectionError(channel, throwable);
-        if (subscription == null || shouldBuffer()) {
+        if (subscription == null) {
+            closeChannelInbound();
+        } else if (shouldBuffer()) {
             addPending(TerminalNotification.error(throwable));
-            if (subscription != null) {
-                processPending(subscription);
-            }
+            processPending(subscription);
         } else {
             sendErrorToTarget(subscription, throwable);
         }
@@ -215,6 +215,7 @@ final class NettyChannelPublisher<T> extends SubscribablePublisher<T> {
         LOGGER.error("emitting ch={} onNext={} last={}", channel, t, isLast);
         if (isLast) {
             resetSubscription();
+            closeHandler.protocolPayloadEndInbound();
         }
         try {
             target.associatedSub.onNext(t);
@@ -272,7 +273,7 @@ final class NettyChannelPublisher<T> extends SubscribablePublisher<T> {
     }
 
     private void closeChannelInbound() {
-        closeHandler.closeChannelInbound(channel);
+        closeHandler.closeChannelInbound();
     }
 
     private void resetSubscription() {

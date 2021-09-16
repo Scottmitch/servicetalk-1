@@ -51,7 +51,7 @@ abstract class AbstractSslCloseNotifyAlertHandlingTest {
 
     AbstractSslCloseNotifyAlertHandlingTest(boolean isClient) throws Exception {
         channel = new EmbeddedDuplexChannel(false);
-        final CloseHandler closeHandler = forPipelinedRequestResponse(isClient, channel.config());
+        final CloseHandler closeHandler = forPipelinedRequestResponse(isClient, channel);
         conn = DefaultNettyConnection.<String, String>initChannel(channel, DEFAULT_ALLOCATOR, immediate(),
                         null,
                         END::equals, closeHandler, defaultFlushStrategy(), null,
@@ -59,21 +59,21 @@ abstract class AbstractSslCloseNotifyAlertHandlingTest {
                     @Override
                     public void channelRead(final ChannelHandlerContext ctx, final Object msg) {
                         if (BEGIN.equals(msg)) {
-                            closeHandler.protocolPayloadBeginInbound(ctx);
+                            closeHandler.protocolPayloadBeginInbound();
                         }
                         ctx.fireChannelRead(msg);
                         if (END.equals(msg)) {
-                            closeHandler.protocolPayloadEndInbound(ctx);
+                            closeHandler.protocolPayloadEndInbound();
                         }
                     }
 
                     @Override
                     public void write(final ChannelHandlerContext ctx, final Object msg, final ChannelPromise promise) {
                         if (BEGIN.equals(msg)) {
-                            closeHandler.protocolPayloadBeginOutbound(ctx);
+                            closeHandler.protocolPayloadBeginOutbound();
                         }
                         if (END.equals(msg)) {
-                            closeHandler.protocolPayloadEndOutbound(ctx, promise);
+                            closeHandler.protocolPayloadEndOutbound(promise);
                         }
                         ctx.write(msg, promise);
                     }

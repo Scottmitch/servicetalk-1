@@ -107,7 +107,7 @@ class NonPipelinedCloseHandlerTest {
     }
 
     void setUp(boolean client) {
-        h = new NonPipelinedCloseHandler(client);
+        h = new NonPipelinedCloseHandler(client, channel);
         ctx = mock(ChannelHandlerContext.class);
         channel = mock(SocketChannel.class, "[id: 0xmocked, L:mocked - R:mocked]");
         when(ctx.channel()).thenReturn(channel);
@@ -128,11 +128,7 @@ class NonPipelinedCloseHandlerTest {
             closed.set(true);
             return future;
         });
-        h.registerEventHandler(channel, e -> {
-            if (observedEvent == null) {
-                observedEvent = e;
-            }
-        });
+        h.onClosing().subscribe(evt -> observedEvent = evt);
     }
 
     @SuppressWarnings("unused")
@@ -219,45 +215,45 @@ class NonPipelinedCloseHandlerTest {
             switch (event) {
                 case IB:
                     assertNotClosed();
-                    h.protocolPayloadBeginInbound(ctx);
+                    h.protocolPayloadBeginInbound();
                     break;
                 case IE:
                     assertNotClosed();
-                    h.protocolPayloadEndInbound(ctx);
+                    h.protocolPayloadEndInbound();
                     break;
                 case IC:
-                    h.protocolClosingInbound(ctx);
+                    h.protocolClosingInbound();
                     break;
                 case OB:
                     assertNotClosed();
-                    h.protocolPayloadBeginOutbound(ctx);
+                    h.protocolPayloadBeginOutbound();
                     break;
                 case OE:
                     assertNotClosed();
                     ChannelPromise promise = ctx.newPromise();
                     promise.trySuccess();
-                    h.protocolPayloadEndOutbound(ctx, promise);
+                    h.protocolPayloadEndOutbound(promise);
                     break;
                 case OC:
-                    h.protocolClosingOutbound(ctx);
+                    h.protocolClosingOutbound();
                     break;
                 case IS:
-                    h.channelClosedInbound(ctx);
+                    h.channelClosedInbound();
                     break;
                 case OS:
-                    h.channelClosedOutbound(ctx);
+                    h.channelClosedOutbound();
                     break;
                 case UC:
-                    h.gracefulUserClosing(channel);
+                    h.gracefulUserClosing();
                     break;
                 case FC:
                     verify(channel).close();
                     break;
                 case CI:
-                    h.closeChannelInbound(channel);
+                    h.closeChannelInbound();
                     break;
                 case CO:
-                    h.closeChannelOutbound(channel);
+                    h.closeChannelOutbound();
                     break;
                 default:
                     throw new IllegalArgumentException("Unknown: " + event);

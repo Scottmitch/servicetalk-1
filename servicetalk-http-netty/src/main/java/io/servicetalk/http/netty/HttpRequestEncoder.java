@@ -84,7 +84,7 @@ final class HttpRequestEncoder extends HttpObjectEncoder<HttpRequestMetaData> {
     @Override
     protected void sanitizeHeadersBeforeEncode(final HttpRequestMetaData msg, final boolean isAlwaysEmpty) {
         // This method has side effects on the methodQueue for the following reasons:
-        // - createMessage will not necessary fire a message up the pipeline.
+        // - createMessage will not necessarily fire a message up the pipeline.
         // - the trigger points on the queue are currently symmetric for the request/response decoder and
         // request/response encoder. We may use header information on the response decoder side, and the queue
         // interaction is conditional (1xx responses don't touch the queue).
