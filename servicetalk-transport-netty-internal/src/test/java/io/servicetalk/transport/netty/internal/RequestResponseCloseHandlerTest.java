@@ -344,7 +344,7 @@ class RequestResponseCloseHandlerTest {
                 }
                 return scc;
             });
-            h = (RequestResponseCloseHandler) spy(forPipelinedRequestResponse(mode == C, channel));
+            h = (RequestResponseCloseHandler) spy(forPipelinedRequestResponse(mode == C, channel.config()));
             h.registerEventHandler(channel, e -> {
                 if (observedEvent == null) {
                     LOGGER.debug("Emitted: {}", e);
@@ -380,8 +380,8 @@ class RequestResponseCloseHandlerTest {
                         break;
                     case IE:
                         assertCanRead();
-                        h.protocolPayloadEndInbound(channel);
-                        order.verify(h).protocolPayloadEndInbound(channel);
+                        h.protocolPayloadEndInbound(ctx);
+                        order.verify(h).protocolPayloadEndInbound(ctx);
                         break;
                     case IC:
                         h.protocolClosingInbound(ctx);
@@ -458,7 +458,7 @@ class RequestResponseCloseHandlerTest {
                             verify(h, never()).protocolPayloadBeginInbound(ctx);
                             break;
                         case IE:
-                            verify(h, never()).protocolPayloadEndInbound(channel);
+                            verify(h, never()).protocolPayloadEndInbound(ctx);
                             break;
                         case IC:
                             verify(h, never()).protocolClosingInbound(ctx);
@@ -571,10 +571,10 @@ class RequestResponseCloseHandlerTest {
             final RequestResponseCloseHandler ch = new RequestResponseCloseHandler(false);
             // Request #1
             channel.eventLoop().execute(() -> ch.protocolPayloadBeginInbound(ctx));
-            channel.eventLoop().execute(() -> ch.protocolPayloadEndInbound(channel));
+            channel.eventLoop().execute(() -> ch.protocolPayloadEndInbound(ctx));
             // Request #2
             channel.eventLoop().execute(() -> ch.protocolPayloadBeginInbound(ctx));
-            channel.eventLoop().execute(() -> ch.protocolPayloadEndInbound(channel));
+            channel.eventLoop().execute(() -> ch.protocolPayloadEndInbound(ctx));
             channel.eventLoop().execute(() -> ch.gracefulUserClosing(channel));
             // Response #1
             channel.eventLoop().execute(() -> ch.protocolPayloadBeginOutbound(ctx));

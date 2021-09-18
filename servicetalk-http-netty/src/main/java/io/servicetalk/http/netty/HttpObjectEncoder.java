@@ -123,7 +123,7 @@ abstract class HttpObjectEncoder<T extends HttpMetaData> extends ChannelOutbound
 
     @Override
     public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) {
-        LOGGER.error("write ch={} msg={}", ctx.channel(), msg);
+        LOGGER.error("{} write msg={}", ctx.channel(), msg);
         if (msg instanceof HttpMetaData) {
             if (state == CONTENT_LEN_CHUNKED) {
                 // The user didn't write any trailers, so just send the last chunk.
@@ -135,10 +135,10 @@ abstract class HttpObjectEncoder<T extends HttpMetaData> extends ChannelOutbound
             // todo(scott): if state == -1 (content-length unknown, what do we do)?
 
             T metaData = castMetaData(msg);
-            LOGGER.error("write ch={} hdrs={}", ctx.channel(), metaData.toString((k, v) -> v));
-            closeHandler.protocolPayloadBeginOutbound();
+            LOGGER.error("{} write hdrs={}", ctx.channel(), metaData.toString((k, v) -> v));
+            closeHandler.protocolPayloadBeginOutbound(ctx);
             if (shouldClose(metaData)) {
-                closeHandler.protocolClosingOutbound();
+                closeHandler.protocolClosingOutbound(ctx);
             }
 
             // We prefer a direct allocation here because it is expected the resulted encoded Buffer will be written
@@ -152,7 +152,7 @@ abstract class HttpObjectEncoder<T extends HttpMetaData> extends ChannelOutbound
                 encodeInitialLine(stBuf, metaData);
                 if (isContentAlwaysEmpty(metaData)) {
                     state = CONTENT_LEN_EMPTY;
-                    closeHandler.protocolPayloadEndOutbound(promise);
+                    closeHandler.protocolPayloadEndOutbound(ctx, promise);
                 } else if (isTransferEncodingChunked(metaData.headers())) {
                     state = CONTENT_LEN_CHUNKED;
                 } else {
@@ -160,7 +160,7 @@ abstract class HttpObjectEncoder<T extends HttpMetaData> extends ChannelOutbound
                     assert state > CONTENT_LEN_LARGEST_VALUE;
                     if (state == 0) {
                         state = CONTENT_LEN_CONSUMED;
-                        closeHandler.protocolPayloadEndOutbound(promise);
+                        closeHandler.protocolPayloadEndOutbound(ctx, promise);
                     }
                 }
 
@@ -194,7 +194,7 @@ abstract class HttpObjectEncoder<T extends HttpMetaData> extends ChannelOutbound
             } else {
                 if (state == 0) {
                     state = CONTENT_LEN_CONSUMED;
-                    closeHandler.protocolPayloadEndOutbound(promise);
+                    closeHandler.protocolPayloadEndOutbound(ctx, promise);
                 }
                 ctx.write(encodeAndRetain(stBuffer), promise);
             }
@@ -203,7 +203,7 @@ abstract class HttpObjectEncoder<T extends HttpMetaData> extends ChannelOutbound
             state = CONTENT_LEN_INIT;
             final HttpHeaders trailers = (HttpHeaders) msg;
             if (isChunked) {
-                closeHandler.protocolPayloadEndOutbound(promise);
+                closeHandler.protocolPayloadEndOutbound(ctx, promise);
                 encodeAndWriteTrailers(ctx, trailers, promise);
             } else if (!trailers.isEmpty()) {
                 tryFailNonEmptyTrailers(ctx, trailers, promise);
@@ -212,7 +212,7 @@ abstract class HttpObjectEncoder<T extends HttpMetaData> extends ChannelOutbound
             } else {
                 // Allow trailers to be written as a marker indicating the request is done.
                 if (state != CONTENT_LEN_CONSUMED) {
-                    closeHandler.protocolPayloadEndOutbound(promise);
+                    closeHandler.protocolPayloadEndOutbound(ctx, promise);
                 }
                 state = CONTENT_LEN_INIT;
                 promise.setSuccess();

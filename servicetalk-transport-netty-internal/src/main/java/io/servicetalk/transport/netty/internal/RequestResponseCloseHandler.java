@@ -84,7 +84,7 @@ class RequestResponseCloseHandler extends CloseHandler {
     @Nullable
     private CloseEvent closeEvent;
 
-    protected interface State {
+    interface State {
         byte READ = 0x01;
         byte WRITE = 0x02;
         byte DISCARDING_SERVER_INPUT = 0x04;
@@ -155,7 +155,6 @@ class RequestResponseCloseHandler extends CloseHandler {
 
     @Override
     public void protocolPayloadBeginInbound(final ChannelHandlerContext ctx) {
-        LOGGER.error("protocolPayloadBeginInbound ch={} state={} closeEvent={}", ctx.channel(), state, closeEvent);
         assert ctx.executor().inEventLoop();
         pending = isClient ? pending - 1 : pending + 1;
         assert pending >= 0 : "Negative pending counter";
@@ -163,19 +162,17 @@ class RequestResponseCloseHandler extends CloseHandler {
     }
 
     @Override
-    public void protocolPayloadEndInbound(final Channel channel) {
-        LOGGER.error("protocolPayloadEndInbound ch={} state={} closeEvent={}", channel, state, closeEvent);
-        assert channel.eventLoop().inEventLoop();
+    public void protocolPayloadEndInbound(final ChannelHandlerContext ctx) {
+        assert ctx.executor().inEventLoop();
+        ctx.pipeline().fireUserEventTriggered(InboundDataEndEvent.INSTANCE);
         state = unset(state, READ);
-        final CloseEvent evt = this.closeEvent;
-        if (evt != null) {
-            closeChannelHalfOrFullyOnPayloadEnd(channel, evt, true);
+        if (closeEvent != null) {
+            closeChannelHalfOrFullyOnPayloadEnd(ctx.channel(), closeEvent, true);
         }
     }
 
     @Override
     public void protocolPayloadBeginOutbound(final ChannelHandlerContext ctx) {
-        LOGGER.error("protocolPayloadBeginOutbound ch={} state={} closeEvent={}", ctx.channel(), state, closeEvent);
         assert ctx.executor().inEventLoop();
         pending = isClient ? pending + 1 : pending - 1;
         assert pending >= 0 : "Negative pending counter";
@@ -184,7 +181,6 @@ class RequestResponseCloseHandler extends CloseHandler {
 
     @Override
     public void protocolPayloadEndOutbound(final ChannelHandlerContext ctx, final ChannelPromise promise) {
-        LOGGER.error("protocolPayloadEndOutbound ch={} state={} closeEvent={}", ctx.channel(), state, closeEvent);
         if (isClient || (closeEvent != null && pending == 0)) {
             ctx.pipeline().fireUserEventTriggered(OutboundDataEndEvent.INSTANCE);
         }
@@ -199,7 +195,6 @@ class RequestResponseCloseHandler extends CloseHandler {
 
     @Override
     public void protocolClosingInbound(final ChannelHandlerContext ctx) {
-        LOGGER.error("protocolClosingInbound ch={} state={} closeEvent={}", ctx.channel(), state, closeEvent);
         assert ctx.executor().inEventLoop();
         storeCloseRequestAndEmit(PROTOCOL_CLOSING_INBOUND);
         maybeCloseChannelHalfOrFullyOnClosing(ctx.channel(), PROTOCOL_CLOSING_INBOUND);
@@ -207,7 +202,6 @@ class RequestResponseCloseHandler extends CloseHandler {
 
     @Override
     public void protocolClosingOutbound(final ChannelHandlerContext ctx) {
-        LOGGER.error("protocolClosingOutbound ch={} state={} closeEvent={}", ctx.channel(), state, closeEvent);
         assert ctx.executor().inEventLoop();
         storeCloseRequestAndEmit(PROTOCOL_CLOSING_OUTBOUND);
         maybeCloseChannelHalfOrFullyOnClosing(ctx.channel(), PROTOCOL_CLOSING_OUTBOUND);
@@ -215,7 +209,6 @@ class RequestResponseCloseHandler extends CloseHandler {
 
     @Override
     void channelClosedInbound(final ChannelHandlerContext ctx) {
-        LOGGER.error("channelClosedInbound ch={} state={} closeEvent={}", ctx.channel(), state, closeEvent);
         assert ctx.executor().inEventLoop();
         if (!has(state, IN_CLOSED)) {
             state = set(state, IN_CLOSED);
@@ -230,7 +223,6 @@ class RequestResponseCloseHandler extends CloseHandler {
 
     @Override
     void channelClosedOutbound(final ChannelHandlerContext ctx) {
-        LOGGER.error("channelClosedOutbound ch={} state={} closeEvent={}", ctx.channel(), state, closeEvent);
         assert ctx.executor().inEventLoop();
         if (!has(state, OUT_CLOSED)) {
             state = set(state, OUT_CLOSED);
@@ -245,7 +237,6 @@ class RequestResponseCloseHandler extends CloseHandler {
 
     @Override
     void channelCloseNotify(final ChannelHandlerContext ctx) {
-        LOGGER.error("channelCloseNotify ch={} state={} closeEvent={}", ctx.channel(), state, closeEvent);
         if (hasAny(state, OUT_CLOSED, CLOSING_SERVER_GRACEFULLY)) {
             // We already closed outbound side of the channel, which triggers closure of SSLEngine and results in
             // SslCloseCompletionEvent#SUCCESS event generated immediately. Connection is already in a closing state,
@@ -262,7 +253,6 @@ class RequestResponseCloseHandler extends CloseHandler {
 
     @Override
     void closeChannelInbound(final Channel channel) {
-        LOGGER.error("closeChannelInbound ch={} state={} closeEvent={}", channel, state, closeEvent);
         // Do not reset INBOUND when server is closing gracefully. This event is triggered during processing of
         // ChannelOutputShutdownEvent if the USER_CLOSE was initiated after response was written.
         if (!hasAny(state, IN_CLOSED, CLOSING_SERVER_GRACEFULLY)) {
@@ -274,7 +264,6 @@ class RequestResponseCloseHandler extends CloseHandler {
 
     @Override
     void closeChannelOutbound(final Channel channel) {
-        LOGGER.error("closeChannelOutbound ch={} state={} closeEvent={}", channel, state, closeEvent);
         if (!has(state, OUT_CLOSED)) {
             LOGGER.debug("{} Half-Closing OUTBOUND (reset)", channel);
             setSocketResetOnClose(channel);
@@ -284,10 +273,46 @@ class RequestResponseCloseHandler extends CloseHandler {
 
     @Override
     void gracefulUserClosing(final Channel channel) {
-        LOGGER.error("gracefulUserClosing ch={} state={} closeEvent={}", channel, state, closeEvent);
         assert channel.eventLoop().inEventLoop();
         storeCloseRequestAndEmit(GRACEFUL_USER_CLOSING);
         maybeCloseChannelHalfOrFullyOnClosing(channel, GRACEFUL_USER_CLOSING);
+    }
+
+    @Override
+    public String toString() {
+        StringBuilder sb = new StringBuilder(32);
+        if (isClient) {
+            sb.append("CLIENT,");
+        } else {
+            sb.append("SERVER,");
+        }
+        sb.append(pending).append(',');
+        if (has(state, READ)) {
+            sb.append("READ,");
+        }
+        if (has(state, WRITE)) {
+            sb.append("WRITE,");
+        }
+        if (has(state, IN_CLOSED)) {
+            sb.append("IN_CLOSED,");
+        }
+        if (has(state, OUT_CLOSED)) {
+            sb.append("OUT_CLOSED,");
+        }
+        if (has(state, DISCARDING_SERVER_INPUT)) {
+            sb.append("DISCARDING_SERVER_INPUT,");
+        }
+        if (has(state, CLOSING_SERVER_GRACEFULLY)) {
+            sb.append("CLOSING_SERVER_GRACEFULLY,");
+        }
+        if (has(state, CLOSED)) {
+            sb.append("CLOSED,");
+        }
+        if (closeEvent != null) {
+            sb.append(closeEvent).append(',');
+        }
+        sb.setLength(sb.length() - 1);
+        return sb.toString();
     }
 
     // This closes the channel either completely when there are no more outstanding requests to drain or half-closes

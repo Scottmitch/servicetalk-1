@@ -51,29 +51,28 @@ abstract class AbstractSslCloseNotifyAlertHandlingTest {
 
     AbstractSslCloseNotifyAlertHandlingTest(boolean isClient) throws Exception {
         channel = new EmbeddedDuplexChannel(false);
-        final CloseHandler closeHandler = forPipelinedRequestResponse(isClient, channel);
+        final CloseHandler closeHandler = forPipelinedRequestResponse(isClient, channel.config());
         conn = DefaultNettyConnection.<String, String>initChannel(channel, DEFAULT_ALLOCATOR, immediate(),
-                        null,
-                        END::equals, closeHandler, defaultFlushStrategy(), null,
+                        null, closeHandler, defaultFlushStrategy(), null,
                 WIRE_LOGGING_INITIALIZER.andThen(ch -> ch.pipeline().addLast(new ChannelDuplexHandler() {
                     @Override
                     public void channelRead(final ChannelHandlerContext ctx, final Object msg) {
                         if (BEGIN.equals(msg)) {
-                            closeHandler.protocolPayloadBeginInbound();
+                            closeHandler.protocolPayloadBeginInbound(ctx);
                         }
                         ctx.fireChannelRead(msg);
                         if (END.equals(msg)) {
-                            closeHandler.protocolPayloadEndInbound();
+                            closeHandler.protocolPayloadEndInbound(ctx);
                         }
                     }
 
                     @Override
                     public void write(final ChannelHandlerContext ctx, final Object msg, final ChannelPromise promise) {
                         if (BEGIN.equals(msg)) {
-                            closeHandler.protocolPayloadBeginOutbound();
+                            closeHandler.protocolPayloadBeginOutbound(ctx);
                         }
                         if (END.equals(msg)) {
-                            closeHandler.protocolPayloadEndOutbound(promise);
+                            closeHandler.protocolPayloadEndOutbound(ctx, promise);
                         }
                         ctx.write(msg, promise);
                     }

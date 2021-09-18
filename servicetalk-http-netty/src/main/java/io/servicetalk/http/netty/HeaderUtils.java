@@ -62,7 +62,6 @@ import static io.servicetalk.http.api.HttpResponseStatus.StatusClass.SUCCESSFUL_
 
 final class HeaderUtils {
     private static final Logger LOGGER = LoggerFactory.getLogger(HeaderUtils.class);
-    static final Predicate<Object> LAST_CHUNK_PREDICATE = p -> p instanceof HttpHeaders;
 
     private HeaderUtils() {
         // no instances

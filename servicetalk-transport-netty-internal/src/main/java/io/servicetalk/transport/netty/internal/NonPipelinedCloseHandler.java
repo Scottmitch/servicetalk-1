@@ -15,20 +15,15 @@
  */
 package io.servicetalk.transport.netty.internal;
 
-import io.servicetalk.concurrent.SingleSource;
-import io.servicetalk.concurrent.api.Single;
-
 import io.netty.channel.Channel;
-import io.netty.channel.ChannelFutureListener;
+import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPromise;
-import io.netty.handler.ssl.SslHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.function.Consumer;
 import javax.annotation.Nullable;
 
-import static io.servicetalk.concurrent.api.Processors.newSingleProcessor;
-import static io.servicetalk.concurrent.api.SourceAdapters.fromSource;
 import static io.servicetalk.transport.netty.internal.CloseHandler.CloseEvent.CHANNEL_CLOSED_INBOUND;
 import static io.servicetalk.transport.netty.internal.CloseHandler.CloseEvent.CHANNEL_CLOSED_OUTBOUND;
 import static io.servicetalk.transport.netty.internal.CloseHandler.CloseEvent.GRACEFUL_USER_CLOSING;
@@ -39,238 +34,204 @@ import static java.util.Objects.requireNonNull;
 final class NonPipelinedCloseHandler extends CloseHandler {
     private static final Logger LOGGER = LoggerFactory.getLogger(NonPipelinedCloseHandler.class);
 
-    private static final short READ = 1;
-    private static final short WRITE = 1 << 1;
-    private static final short IN_CLOSING = 1 << 2;
-    private static final short OUT_CLOSING = 1 << 3;
-    private static final short IN_CLOSED = 1 << 4;
-    private static final short OUT_CLOSED = 1 << 5;
-    private static final short CLOSED = 1 << 6;
-    private static final short GRACEFUL_CLOSE = 1 << 7;
-    private static final short IS_CLIENT = 1 << 8;
-    private static final short IN_OUT_CLOSED = IN_CLOSED | OUT_CLOSED;
-    private static final short ALL_CLOSED = IN_CLOSED | OUT_CLOSED | CLOSED;
-    private static final short READ_WRITE = READ | WRITE;
-    private static final short CLIENT_IN_WRITE = IS_CLIENT | WRITE | IN_CLOSED;
-    private static final short GRACEFUL_IN_CLOSED = GRACEFUL_CLOSE | IN_CLOSED;
-    private static final short GRACEFUL_OUT_CLOSED = GRACEFUL_CLOSE | OUT_CLOSED;
-    private short state;
-    private int pending;
-    private final Channel channel;
+    private static final byte READ = 0x1;
+    private static final byte WRITE = 0x2;
+    private static final byte IN_CLOSED = 0x4;
+    private static final byte OUT_CLOSED = 0x8;
+    private static final byte CLOSED = 0x10;
+    private static final byte GRACEFUL_CLOSE = 0x20;
+    private static final byte IS_CLIENT = 0x40;
+    private static final byte ALL_CLOSED = IN_CLOSED | OUT_CLOSED | CLOSED;
+    private static final byte READ_WRITE = READ | WRITE;
+    private static final byte CLIENT_IN_WRITE = IS_CLIENT | WRITE | IN_CLOSED;
+    private static final byte GRACEFUL_IN_CLOSED = GRACEFUL_CLOSE | IN_CLOSED;
+    private static final byte GRACEFUL_OUT_CLOSED = GRACEFUL_CLOSE | OUT_CLOSED;
+    private byte state;
+    private Consumer<CloseEvent> eventHandler = __ -> { };
     @Nullable
     private CloseEvent closeEvent;
-    private final SingleSource.Processor<CloseEvent, CloseEvent> onClosing;
 
-    NonPipelinedCloseHandler(boolean isClient, Channel channel) {
+    NonPipelinedCloseHandler(boolean isClient) {
         if (isClient) {
             state = IS_CLIENT;
         }
-        this.channel = requireNonNull(channel);
-        onClosing = newSingleProcessor();
     }
 
     @Override
-    public void protocolPayloadBeginInbound() {
-        LOGGER.error("{} protocolPayloadBeginInbound state={} pending={} closeEvent={}", channel, state, pending, onClosing);
-        if (!isClient()) {
-            ++pending;
-        }
+    public void protocolPayloadBeginInbound(final ChannelHandlerContext ctx) {
         state = set(state, READ);
     }
 
     @Override
-    public void protocolPayloadEndInbound() {
-        LOGGER.error("{} protocolPayloadEndInbound state={} pending={} closeEvent={}", channel, state, pending, onClosing);
-        final boolean isClient = isClient();
-        if (isClient) {
-            assert pending > 0;
-            if (--pending == 0 && isAnySet(state, GRACEFUL_CLOSE)) {
-                state = set(state, IN_CLOSED);
-            }
-        }
-        if (isAnySet(state, IN_CLOSING) && !isAnySet(state, IN_CLOSED)) {
-            if (isClient) {
-                state = set(state, IN_OUT_CLOSED); // If client is closing we give up on writes
-                pending = 0;
-            } else {
-                state = set(state, IN_CLOSED);
-                channel.pipeline().fireUserEventTriggered(DiscardFurtherInboundEvent.INSTANCE);
-            }
-        }
+    public void protocolPayloadEndInbound(final ChannelHandlerContext ctx) {
+        ctx.pipeline().fireUserEventTriggered(InboundDataEndEvent.INSTANCE);
         state = unset(state, READ);
-        inboundEventCheckClose();
+        inboundEventCheckClose(ctx.channel(), closeEvent);
     }
 
     @Override
-    public void protocolPayloadBeginOutbound() {
-        LOGGER.error("{} protocolPayloadBeginOutbound state={} pending={} closeEvent={}", channel, state, pending, onClosing);
-        if (isClient()) {
-            ++pending;
-        }
+    public void protocolPayloadBeginOutbound(final ChannelHandlerContext ctx) {
         state = set(state, WRITE);
     }
 
     @Override
-    public void protocolPayloadEndOutbound(final ChannelPromise promise) {
-        LOGGER.error("{} protocolPayloadEndOutbound state={} pending={} closeEvent={}", channel, state, pending, onClosing);
-        if (isAnySet(state, OUT_CLOSING)) {
-            state = set(state, OUT_CLOSED);
-        }
-        if (isClient() || (isAllSet(state, OUT_CLOSED) && pending == 1)) {
-            channel.pipeline().fireUserEventTriggered(OutboundDataEndEvent.INSTANCE);
-        }
+    public void protocolPayloadEndOutbound(final ChannelHandlerContext ctx, final ChannelPromise promise) {
+        ctx.pipeline().fireUserEventTriggered(OutboundDataEndEvent.INSTANCE);
         promise.addListener(f -> {
-            if (!isClient()) {
-                assert pending > 0;
-                if ((--pending == 0 && isAnySet(state, GRACEFUL_CLOSE)) || isAnySet(state, OUT_CLOSING)) {
-                    state = set(state, IN_OUT_CLOSED);
-                    pending = 0;
-                }
-            }
             state = unset(state, WRITE);
-            outboundEventCheckClose();
+            outboundEventCheckClose(ctx.channel(), closeEvent);
         });
     }
 
     @Override
-    public void protocolClosingInbound() {
-        LOGGER.error("{} protocolClosingInbound state={} pending={} closeEvent={}", channel, state, pending, onClosing);
-        state = set(state, IN_CLOSING);
-        storeCloseRequestAndEmit(PROTOCOL_CLOSING_INBOUND);
+    public void protocolClosingInbound(final ChannelHandlerContext ctx) {
+        state = set(state, IN_CLOSED);
+        final CloseEvent evt = PROTOCOL_CLOSING_INBOUND;
+        storeCloseRequestAndEmit(evt);
+        inboundEventCheckClose(ctx.channel(), evt);
     }
 
     @Override
-    public void protocolClosingOutbound() {
-        LOGGER.error("{} protocolClosingOutbound state={} pending={} closeEvent={}", channel, state, pending, onClosing);
-        state = set(state, OUT_CLOSING);
-        storeCloseRequestAndEmit(PROTOCOL_CLOSING_OUTBOUND);
+    public void protocolClosingOutbound(final ChannelHandlerContext ctx) {
+        state = set(state, OUT_CLOSED);
+        final CloseEvent evt = PROTOCOL_CLOSING_OUTBOUND;
+        storeCloseRequestAndEmit(evt);
+        outboundEventCheckClose(ctx.channel(), evt);
     }
 
     @Override
-    public Single<CloseEvent> onClosing() {
-        return fromSource(onClosing);
+    void registerEventHandler(final Channel channel, final Consumer<CloseEvent> eventHandler) {
+        this.eventHandler = requireNonNull(eventHandler);
     }
 
     @Override
-    void channelClosedInbound() {
-        LOGGER.error("{} channelClosedInbound state={} pending={} closeEvent={}", channel, state, pending, onClosing);
-        storeCloseRequestAndEmit(CHANNEL_CLOSED_INBOUND);
-        inboundEventCheckClose();
-    }
-
-    @Override
-    void channelClosedOutbound() {
-        LOGGER.error("{} channelClosedOutbound state={} pending={} closeEvent={}", channel, state, pending, onClosing);
-        transportOutboundClose(CHANNEL_CLOSED_OUTBOUND);
-    }
-
-    @Override
-    void channelCloseNotify() {
-        LOGGER.error("{} channelCloseNotify state={} pending={} closeEvent={}", channel, state, pending, onClosing);
-        channelClosedInbound();
-        closeChannelOutbound();
-    }
-
-    @Override
-    void closeChannelInbound() {
-        LOGGER.error("{} closeChannelInbound state={} pending={} closeEvent={}", channel, state, pending, onClosing);
-        transportInboundClose(null);
-    }
-
-    @Override
-    void closeChannelOutbound() {
-        LOGGER.error("{} closeChannelOutbound state={} pending={} closeEvent={}", channel, state, pending, onClosing);
-        transportOutboundClose(null);
-    }
-
-    @Override
-    void gracefulUserClosing() {
-        LOGGER.error("{} gracefulUserClosing state={} pending={} closeEvent={}", channel, state, pending, onClosing);
-        state = set(state, GRACEFUL_CLOSE);
-        storeCloseRequestAndEmit(GRACEFUL_USER_CLOSING);
-        if (pending == 0 && !isAnySet(state, READ_WRITE)) {
-            closeChannel();
-        } else if (!isAnySet(state, READ) && !isClient()) {
-            channel.pipeline().fireUserEventTriggered(DiscardFurtherInboundEvent.INSTANCE);
+    void channelClosedInbound(final ChannelHandlerContext ctx) {
+        if (!isAnySet(state, IN_CLOSED)) {
+            state = unset(set(state, IN_CLOSED), READ);
+            final CloseEvent evt = CHANNEL_CLOSED_INBOUND;
+            storeCloseRequestAndEmit(evt);
+            inboundEventCheckClose(ctx.channel(), evt);
         }
     }
 
-    private boolean isClient() {
-        return isAllSet(state, IS_CLIENT);
-    }
-
-    private void transportInboundClose(@Nullable CloseEvent evt) {
-        if (!isAllSet(state, IN_CLOSED)) {
-            state = set(state, IN_CLOSED);
-            if (evt != null) {
-                storeCloseRequestAndEmit(evt);
-            }
-            inboundEventCheckClose();
-        }
-    }
-
-    private void transportOutboundClose(@Nullable CloseEvent evt) {
-        if (!isAllSet(state, OUT_CLOSED)) {
+    @Override
+    void channelClosedOutbound(final ChannelHandlerContext ctx) {
+        if (!isAnySet(state, OUT_CLOSED)) {
             state = unset(set(state, OUT_CLOSED), WRITE);
-            if (evt != null) {
-                storeCloseRequestAndEmit(evt);
-            }
-            outboundEventCheckClose();
+            final CloseEvent evt = CHANNEL_CLOSED_OUTBOUND;
+            storeCloseRequestAndEmit(evt);
+            outboundEventCheckClose(ctx.channel(), evt);
         }
     }
 
-    private void inboundEventCheckClose() {
-        if (pending == 0 && (isAllSet(state, OUT_CLOSED) ||
-                (isAnySet(state, GRACEFUL_IN_CLOSED) && !isAllSet(state, WRITE)))) {
-            closeChannel();
+    @Override
+    void channelCloseNotify(final ChannelHandlerContext ctx) {
+        channelClosedInbound(ctx);
+        closeChannelOutbound(ctx.channel());
+    }
+
+    @Override
+    void closeChannelInbound(final Channel channel) {
+        state = set(state, IN_CLOSED);
+        // todo storeCloseRequestAndEmit ?
+        inboundEventCheckClose(channel, closeEvent);
+    }
+
+    @Override
+    void closeChannelOutbound(final Channel channel) {
+        state = set(state, OUT_CLOSED);
+        // todo storeCloseRequestAndEmit ?
+        outboundEventCheckClose(channel, closeEvent);
+    }
+
+    @Override
+    void gracefulUserClosing(final Channel channel) {
+        state = set(state, GRACEFUL_CLOSE);
+        final CloseEvent evt = GRACEFUL_USER_CLOSING;
+        storeCloseRequestAndEmit(evt);
+        if (!isAnySet(state, READ_WRITE)) {
+            closeChannel(channel, evt);
+        }
+    }
+
+    @Override
+    public String toString() {
+        StringBuilder sb = new StringBuilder(32);
+        if (isAnySet(state, IS_CLIENT)) {
+            sb.append("CLIENT,");
+        } else {
+            sb.append("SERVER,");
+        }
+        if (isAnySet(state, READ)) {
+            sb.append("READ,");
+        }
+        if (isAnySet(state, WRITE)) {
+            sb.append("WRITE,");
+        }
+        if (isAnySet(state, IN_CLOSED)) {
+            sb.append("IN_CLOSED,");
+        }
+        if (isAnySet(state, OUT_CLOSED)) {
+            sb.append("OUT_CLOSED,");
+        }
+        if (isAnySet(state, GRACEFUL_CLOSE)) {
+            sb.append("GRACEFUL_CLOSE,");
+        }
+        if (isAnySet(state, CLOSED)) {
+            sb.append("CLOSED,");
+        }
+        if (closeEvent != null) {
+            sb.append(closeEvent).append(',');
+        }
+        sb.setLength(sb.length() - 1);
+        return sb.toString();
+    }
+
+    private void inboundEventCheckClose(final Channel channel, @Nullable final CloseEvent evt) {
+        if (isAllSet(state, OUT_CLOSED) || (isAnySet(state, GRACEFUL_IN_CLOSED) && !isAllSet(state, WRITE))) {
+            closeChannel(channel, evt);
         } else if (isAllSet(state, CLIENT_IN_WRITE)) {
-            // If a client inbound has closed while writing we abort writes because we can't be sure if writes will ever
-            // complete or receive any additional feedback from the server.
+            // If a client inbound has closed while writing we abort the write because we can't be sure if the write
+            // will ever complete or receive any additional feedback form the server.
             state = unset(state, WRITE);
             channel.pipeline().fireUserEventTriggered(AbortWritesEvent.INSTANCE);
         }
     }
 
-    private void outboundEventCheckClose() {
-        if (pending == 0 && (isAllSet(state, IN_CLOSED) ||
-                (isAnySet(state, GRACEFUL_OUT_CLOSED) && !isAllSet(state, READ)))) {
-            closeChannel();
+    private void outboundEventCheckClose(final Channel channel, @Nullable final CloseEvent evt) {
+        if (isAllSet(state, IN_CLOSED) || (isAnySet(state, GRACEFUL_OUT_CLOSED) && !isAllSet(state, READ))) {
+            closeChannel(channel, evt);
         }
     }
 
     private void storeCloseRequestAndEmit(final CloseEvent event) {
-        if (closeEvent == null) {
-            closeEvent = event;
-            onClosing.onSuccess(event);
+        if (this.closeEvent == null) {
+            this.closeEvent = event;
         }
+        eventHandler.accept(event);
     }
 
-    private void closeChannel() {
-        if (!isAllSet(state, CLOSED)) {
+    private void closeChannel(final Channel channel, @Nullable final CloseEvent evt) {
+        if (!isAnySet(state, CLOSED)) {
             state = set(state, ALL_CLOSED);
-            final SslHandler sslHandler = channel.pipeline().get(SslHandler.class);
-            if (sslHandler != null) {
-                // send close_notify: https://tools.ietf.org/html/rfc5246#section-7.2.1
-                sslHandler.closeOutbound().addListener(ChannelFutureListener.CLOSE);
-            } else {
-                channel.close();
-            }
+            LOGGER.trace("{} Closing channel – evt: {}", channel, evt);
+            channel.close();
         }
     }
 
-    private static short set(short state, short flags) {
-        return (short) (state | flags);
+    private static byte set(byte state, byte flags) {
+        return (byte) (state | flags);
     }
 
-    private static short unset(short state, short flags) {
-        return (short) (state & ~flags);
+    private static byte unset(byte state, byte flags) {
+        return (byte) (state & ~flags);
     }
 
-    private static boolean isAllSet(short state, short flags) {
+    private static boolean isAllSet(byte state, byte flags) {
         return (state & flags) == flags;
     }
 
-    private static boolean isAnySet(short state, short flags) {
+    private static boolean isAnySet(byte state, byte flags) {
         return (state & flags) != 0;
     }
 }

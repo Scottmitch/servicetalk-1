@@ -15,10 +15,8 @@
  */
 package io.servicetalk.transport.netty.internal;
 
-import io.servicetalk.concurrent.api.Completable;
-import io.servicetalk.concurrent.api.Single;
-
 import io.netty.channel.Channel;
+import io.netty.channel.ChannelConfig;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPromise;
 import io.netty.channel.EventLoop;
@@ -27,11 +25,11 @@ import io.netty.channel.socket.SocketChannel;
 import io.netty.handler.ssl.SslCloseCompletionEvent;
 
 import java.nio.channels.ClosedChannelException;
+import java.util.function.Consumer;
 import javax.annotation.Nullable;
 
 import static io.netty.channel.ChannelOption.ALLOW_HALF_CLOSURE;
 import static java.lang.Boolean.TRUE;
-import static java.util.Objects.requireNonNull;
 
 /**
  * Contract between protocol codecs and a close handler.
@@ -43,14 +41,14 @@ public abstract class CloseHandler {
      * New {@link CloseHandler} instance.
      *
      * @param client operation mode, {@code TRUE} for {@code client} or {@code FALSE} for {@code server}
-     * @param channel The {@link Channel} managed by the {@link CloseHandler}.
+     * @param config The {@link ChannelConfig} associated with the channel to create the {@link CloseHandler} for.
+     * This {@link ChannelConfig} maybe modified to ensure the underlying options allow for half-closure.
      * @return a new connection close handler with behavior for a pipelined request/response client or server
      */
-    public static CloseHandler forPipelinedRequestResponse(boolean client, Channel channel) {
-        channel.config().setOption(ALLOW_HALF_CLOSURE, TRUE);
-        channel.config().setAutoClose(false);
-        // return new RequestResponseCloseHandler(client);
-        return new NonPipelinedCloseHandler(client, channel);
+    public static CloseHandler forPipelinedRequestResponse(boolean client, ChannelConfig config) {
+        config.setOption(ALLOW_HALF_CLOSURE, TRUE);
+        config.setAutoClose(false);
+        return new LoggingCloseHandler(new RequestResponseCloseHandler(client));
     }
 
     /**
@@ -59,92 +57,116 @@ public abstract class CloseHandler {
      * (e.g. {@link DuplexChannel}) nor support any special channel options
      * (e.g. {@link io.netty.channel.ChannelOption#ALLOW_HALF_CLOSURE}).
      * @param isClient operation mode, {@code TRUE} for {@code client} or {@code FALSE} for {@code server}.
-     * @param channel The {@link Channel} managed by the {@link CloseHandler}.
+     * @param config The {@link ChannelConfig} associated with the channel to create the {@link CloseHandler} for.
      * @return a new {@link CloseHandler} instance which doesn't support pipelining.
      */
-    public static CloseHandler forNonPipelined(boolean isClient, Channel channel) {
-        channel.config().setAutoClose(false);
-        return new NonPipelinedCloseHandler(isClient, channel);
+    public static CloseHandler forNonPipelined(boolean isClient, ChannelConfig config) {
+        config.setAutoClose(false);
+        return new LoggingCloseHandler(new NonPipelinedCloseHandler(isClient));
     }
 
     /**
      * Signal begin of inbound payload, to be emitted from the {@link EventLoop} for the {@link Channel}.
+     *
+     * @param ctx {@link ChannelHandlerContext}
      */
-    public abstract void protocolPayloadBeginInbound();
+    public abstract void protocolPayloadBeginInbound(ChannelHandlerContext ctx);
 
     /**
      * Signal end of inbound payload, to be emitted from the {@link EventLoop} for the {@link Channel}.
+     *
+     * @param ctx {@link ChannelHandlerContext}
      */
-    public abstract void protocolPayloadEndInbound();
+    public abstract void protocolPayloadEndInbound(ChannelHandlerContext ctx);
 
     /**
      * Signal begin of outbound payload, to be emitted from the {@link EventLoop} for the {@link Channel}.
+     *
+     * @param ctx {@link ChannelHandlerContext}
      */
-    public abstract void protocolPayloadBeginOutbound();
+    public abstract void protocolPayloadBeginOutbound(ChannelHandlerContext ctx);
 
     /**
      * Signal end of outbound payload, including the {@link ChannelPromise} associated with the last write. Must be
      * called from the {@link EventLoop} for the {@link Channel}.
      * @param promise The {@link ChannelPromise} associated with the last write operation.
+     * @param ctx {@link ChannelHandlerContext}
      */
-    public abstract void protocolPayloadEndOutbound(ChannelPromise promise);
+    public abstract void protocolPayloadEndOutbound(ChannelHandlerContext ctx, ChannelPromise promise);
 
     /**
      * Signal inbound close command observed, to be emitted from the {@link EventLoop} for the {@link Channel}.
+     *
+     * @param ctx {@link ChannelHandlerContext}
      */
-    public abstract void protocolClosingInbound();
+    public abstract void protocolClosingInbound(ChannelHandlerContext ctx);
 
     /**
      * Signal outbound close command observed, to be emitted from the {@link EventLoop} for the {@link Channel}.
+     *
+     * @param ctx {@link ChannelHandlerContext}
      */
-    public abstract void protocolClosingOutbound();
+    public abstract void protocolClosingOutbound(ChannelHandlerContext ctx);
 
     /**
-     * Get notified on the leading edge when to stop accepting new requests (in flight requests are not impacted by this
-     * signal).
-     * @return A {@link Completable} that complete when a {@link Throwable} may also provide the reason to stop.
+     * Registers a handler for {@link CloseEvent}.
+     *
+     * @param channel the {@link Channel} for which this event handler is registering
+     * @param eventHandler receives {@link CloseEvent}, to be emitted from the {@link EventLoop} for the {@link Channel}
      */
-    abstract Completable stopAccepting();
+    abstract void registerEventHandler(Channel channel, Consumer<CloseEvent> eventHandler);
 
     /**
      * Signal {@link Channel} inbound close command observed, to be emitted from the {@link EventLoop} for the channel.
+     *
+     * @param ctx {@link ChannelHandlerContext}
      */
-    abstract void channelClosedInbound();
+    abstract void channelClosedInbound(ChannelHandlerContext ctx);
 
     /**
      * Signal {@link Channel} outbound close command observed, to be emitted from the {@link EventLoop} for the channel.
+     *
+     * @param ctx {@link ChannelHandlerContext}
      */
-    abstract void channelClosedOutbound();
+    abstract void channelClosedOutbound(ChannelHandlerContext ctx);
 
     /**
      * Signal {@link Channel} observed {@link SslCloseCompletionEvent#SUCCESS}.
      * <p>
      * Received <a href="https://tools.ietf.org/html/rfc5246#section-7.2.1">close_notify</a> alert from the peer.
      * This message notifies that the sender will not send any more messages on this connection.
+     *
+     * @param ctx {@link ChannelHandlerContext}
      */
-    abstract void channelCloseNotify();
+    abstract void channelCloseNotify(ChannelHandlerContext ctx);
 
     /**
      * Request {@link Channel} inbound close, to be emitted from the {@link EventLoop} for the channel.
      * <p>
      * This method will not ensure graceful closure of the channel inbound and may abort reads.
+     *
+     * @param channel {@link Channel}
      */
-    abstract void closeChannelInbound();
+    abstract void closeChannelInbound(Channel channel);
 
     /**
      * Request {@link Channel} outbound close, to be emitted from the {@link EventLoop} for the channel.
      * <p>
      * This method will not ensure graceful closure of the channel outbound and may abort reads. The implementations of
      * this method should be idempotent because it may be invoked multiple times.
+     *
+     * @param channel {@link Channel}
      */
-    abstract void closeChannelOutbound();
+    abstract void closeChannelOutbound(Channel channel);
 
     /**
      * Signal a user requested close of the {@link Channel}, to be emitted from the {@link EventLoop} for the channel.
      * <p>
      * This translates to a protocol level close command, but is initiated by the user.
+     *
+     * @param channel {@link Channel}
      */
-    abstract void gracefulUserClosing();
+    abstract void gracefulUserClosing(Channel channel);
 
     /**
      * These events indicate an event was observed from the protocol or {@link Channel} that indicates the end of the
@@ -226,16 +248,21 @@ public abstract class CloseHandler {
     }
 
     private static final class UnsupportedProtocolHandler extends CloseHandler {
+
         @Override
-        void channelClosedInbound() {
+        void registerEventHandler(final Channel channel, final Consumer<CloseEvent> eventHandler) {
         }
 
         @Override
-        void channelClosedOutbound() {
+        void channelClosedInbound(final ChannelHandlerContext ctx) {
         }
 
         @Override
-        void channelCloseNotify() {
+        void channelClosedOutbound(final ChannelHandlerContext ctx) {
+        }
+
+        @Override
+        void channelCloseNotify(final ChannelHandlerContext ctx) {
         }
 
         @Override
@@ -258,7 +285,8 @@ public abstract class CloseHandler {
         }
 
         @Override
-        public void protocolPayloadEndInbound(final Channel channel) {
+        public void protocolPayloadEndInbound(final ChannelHandlerContext ctx) {
+            ctx.pipeline().fireUserEventTriggered(InboundDataEndEvent.INSTANCE);
         }
 
         @Override
@@ -279,6 +307,7 @@ public abstract class CloseHandler {
     }
 
     private abstract static class NettyUserEvent {
+
         @Override
         public String toString() {
             return this.getClass().getName();
@@ -286,15 +315,30 @@ public abstract class CloseHandler {
     }
 
     /**
-     * Netty UserEvent to indicate the end of a outbound data was observed at the transport.
+     * {@link NettyUserEvent} to indicate the end of outbound data was observed at the transport.
      */
     static final class OutboundDataEndEvent extends NettyUserEvent {
         /**
-         * Netty UserEvent instance to indicate an outbound end of data.
+         * {@link NettyUserEvent} instance to indicate an outbound end of data.
          */
         static final OutboundDataEndEvent INSTANCE = new OutboundDataEndEvent();
 
         private OutboundDataEndEvent() {
+            // No instances.
+        }
+    }
+
+    /**
+     * {@link NettyUserEvent} to indicate the end of inbound data was observed at the transport.
+     */
+    static final class InboundDataEndEvent extends NettyUserEvent {
+        static final InboundDataEndEvent INSTANCE = new InboundDataEndEvent();
+
+        /**
+         * {@link NettyUserEvent} to indicate the end of inbound data was observed at the transport.
+         */
+        private InboundDataEndEvent() {
+            // No instances.
         }
     }
 

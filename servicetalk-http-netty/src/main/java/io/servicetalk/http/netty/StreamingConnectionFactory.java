@@ -30,7 +30,6 @@ import io.netty.channel.Channel;
 
 import static io.servicetalk.buffer.netty.BufferUtils.getByteBufAllocator;
 import static io.servicetalk.http.api.HttpProtocolVersion.HTTP_1_1;
-import static io.servicetalk.http.netty.HeaderUtils.LAST_CHUNK_PREDICATE;
 import static io.servicetalk.http.netty.HttpDebugUtils.showPipeline;
 import static io.servicetalk.transport.netty.internal.CloseHandler.forPipelinedRequestResponse;
 
@@ -53,12 +52,12 @@ final class StreamingConnectionFactory {
     static Single<? extends DefaultNettyConnection<Object, Object>> createConnection(final Channel channel,
             final HttpExecutionContext executionContext, final ReadOnlyHttpClientConfig config,
             final ChannelInitializer initializer, final ConnectionObserver connectionObserver) {
-        final CloseHandler closeHandler = forPipelinedRequestResponse(true, channel);
+        final CloseHandler closeHandler = forPipelinedRequestResponse(true, channel.config());
         assert config.h1Config() != null;
         return showPipeline(DefaultNettyConnection.initChannel(channel, executionContext.bufferAllocator(),
-                executionContext.executor(), executionContext.ioExecutor(),
-                LAST_CHUNK_PREDICATE, closeHandler, config.tcpConfig().flushStrategy(),
-                config.tcpConfig().idleTimeoutMs(), initializer.andThen(new HttpClientChannelInitializer(
+                executionContext.executor(), executionContext.ioExecutor(), closeHandler,
+                config.tcpConfig().flushStrategy(), config.tcpConfig().idleTimeoutMs(),
+                initializer.andThen(new HttpClientChannelInitializer(
                         getByteBufAllocator(executionContext.bufferAllocator()), config.h1Config(), closeHandler)),
                 executionContext.executionStrategy(), HTTP_1_1, connectionObserver, true), HTTP_1_1, channel);
     }

@@ -15,11 +15,13 @@
  */
 package io.servicetalk.transport.netty.internal;
 
-import io.servicetalk.concurrent.api.Single;
-
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPromise;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.function.Consumer;
 
 final class LoggingCloseHandler extends CloseHandler {
     private static final Logger LOGGER = LoggerFactory.getLogger(LoggingCloseHandler.class);
@@ -30,79 +32,80 @@ final class LoggingCloseHandler extends CloseHandler {
     }
 
     @Override
-    public void protocolPayloadBeginInbound() {
-        LOGGER.error("protocolPayloadBeginInbound {}", delegate);
-        delegate.protocolPayloadBeginInbound();
+    public void protocolPayloadBeginInbound(ChannelHandlerContext ctx) {
+        LOGGER.error("{} protocolPayloadBeginInbound {}", ctx.channel(), delegate);
+        delegate.protocolPayloadBeginInbound(ctx);
     }
 
     @Override
-    public void protocolPayloadEndInbound() {
-        LOGGER.error("protocolPayloadEndInbound {}", delegate);
-        delegate.protocolPayloadEndInbound();
+    public void protocolPayloadEndInbound(ChannelHandlerContext ctx) {
+        LOGGER.error("{} protocolPayloadEndInbound {}", ctx.channel(), delegate);
+        delegate.protocolPayloadEndInbound(ctx);
     }
 
     @Override
-    public void protocolPayloadBeginOutbound() {
-        LOGGER.error("protocolPayloadBeginOutbound {}", delegate);
-        delegate.protocolPayloadBeginOutbound();
+    public void protocolPayloadBeginOutbound(ChannelHandlerContext ctx) {
+        LOGGER.error("{} protocolPayloadBeginOutbound {}", ctx.channel(), delegate);
+        delegate.protocolPayloadBeginOutbound(ctx);
     }
 
     @Override
-    public void protocolPayloadEndOutbound(final ChannelPromise promise) {
-        LOGGER.error("protocolPayloadEndOutbound {}", delegate);
-        delegate.protocolPayloadEndOutbound(promise);
+    public void protocolPayloadEndOutbound(ChannelHandlerContext ctx, final ChannelPromise promise) {
+        LOGGER.error("{} protocolPayloadEndOutbound {}", ctx.channel(), delegate);
+        delegate.protocolPayloadEndOutbound(ctx, promise);
     }
 
     @Override
-    public void protocolClosingInbound() {
-        LOGGER.error("protocolClosingInbound {}", delegate);
-        delegate.protocolClosingInbound();
+    public void protocolClosingInbound(ChannelHandlerContext ctx) {
+        LOGGER.error("{} protocolClosingInbound {}", ctx.channel(), delegate);
+        delegate.protocolClosingInbound(ctx);
     }
 
     @Override
-    public void protocolClosingOutbound() {
-        LOGGER.error("protocolClosingOutbound {}", delegate);
-        delegate.protocolClosingOutbound();
+    public void protocolClosingOutbound(ChannelHandlerContext ctx) {
+        LOGGER.error("{} protocolClosingOutbound {}", ctx.channel(), delegate);
+        delegate.protocolClosingOutbound(ctx);
     }
 
     @Override
-    public Single<CloseEvent> onClosing() {
-        return delegate.onClosing();
+    void registerEventHandler(final Channel channel, final Consumer<CloseEvent> eventHandler) {
+        LOGGER.error("{} registerEventHandler {}", channel, delegate);
+        delegate.registerEventHandler(channel, eventHandler);
     }
 
     @Override
-    void channelClosedInbound() {
-        LOGGER.error("channelClosedInbound {}", delegate);
-        delegate.channelClosedInbound();
+    void channelClosedInbound(ChannelHandlerContext ctx) {
+        LOGGER.error("{} channelClosedInbound {}", ctx.channel(), delegate);
+        delegate.channelClosedInbound(ctx);
     }
 
     @Override
-    void channelClosedOutbound() {
-        LOGGER.error("channelClosedOutbound {}", delegate);
-        delegate.channelClosedOutbound();
+    void channelClosedOutbound(ChannelHandlerContext ctx) {
+        LOGGER.error("{} channelClosedOutbound {}", ctx.channel(), delegate);
+        delegate.channelClosedOutbound(ctx);
     }
 
     @Override
-    void channelCloseNotify() {
-        LOGGER.error("channelCloseNotify {}", delegate);
-        delegate.channelCloseNotify();
+    void channelCloseNotify(ChannelHandlerContext ctx) {
+        LOGGER.error("{} channelCloseNotify {}", ctx.channel(), delegate);
+        delegate.channelCloseNotify(ctx);
     }
 
     @Override
-    void closeChannelInbound() {
-        LOGGER.error("closeChannelInbound {}", delegate);
-        delegate.closeChannelInbound();
+    void closeChannelInbound(Channel channel) {
+        LOGGER.error("{} closeChannelInbound {}", channel, delegate);
+        delegate.closeChannelInbound(channel);
     }
 
     @Override
-    void closeChannelOutbound() {
-        LOGGER.error("closeChannelOutbound {}", delegate);
-        delegate.closeChannelOutbound();
+    void closeChannelOutbound(Channel channel) {
+        LOGGER.error("{} closeChannelOutbound {}", channel, delegate);
+        delegate.closeChannelOutbound(channel);
     }
 
     @Override
-    void gracefulUserClosing() {
-        LOGGER.error("gracefulUserClosing {}", delegate);
-        delegate.gracefulUserClosing();
+    void gracefulUserClosing(Channel channel) {
+        LOGGER.error("{} gracefulUserClosing {}", channel, delegate);
+        delegate.gracefulUserClosing(channel);
     }
 }

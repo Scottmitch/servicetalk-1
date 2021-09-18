@@ -77,11 +77,9 @@ import static io.servicetalk.http.api.HttpHeaderValues.KEEP_ALIVE;
 import static io.servicetalk.http.api.HttpProtocolVersion.HTTP_1_1;
 import static io.servicetalk.http.api.HttpRequestMetaDataFactory.newRequestMetaData;
 import static io.servicetalk.http.api.HttpRequestMethod.GET;
-import static io.servicetalk.http.netty.HeaderUtils.LAST_CHUNK_PREDICATE;
 import static io.servicetalk.transport.netty.NettyIoExecutors.createIoExecutor;
 import static io.servicetalk.transport.netty.internal.AddressUtils.localAddress;
 import static io.servicetalk.transport.netty.internal.AddressUtils.serverHostAndPort;
-import static io.servicetalk.transport.netty.internal.CloseHandler.UNSUPPORTED_PROTOCOL_CLOSE_HANDLER;
 import static io.servicetalk.transport.netty.internal.CloseHandler.forPipelinedRequestResponse;
 import static io.servicetalk.transport.netty.internal.FlushStrategies.defaultFlushStrategy;
 import static java.lang.Integer.toHexString;
@@ -405,8 +403,7 @@ class HttpRequestEncoderTest extends HttpEncoderTest<HttpRequestMetaData> {
                             SEC, null,
                             (channel, observer) -> DefaultNettyConnection.initChannel(channel, SEC.bufferAllocator(),
                                     SEC.executor(), SEC.ioExecutor(),
-                                    LAST_CHUNK_PREDICATE, UNSUPPORTED_PROTOCOL_CLOSE_HANDLER,
-                                    defaultFlushStrategy(), null,
+                                    forPipelinedRequestResponse(false, channel.config()), defaultFlushStrategy(), null,
                                     new TcpServerChannelInitializer(sConfig, observer).andThen(
                                             channel2 -> {
                                                 serverChannelRef.compareAndSet(null, channel2);
@@ -419,11 +416,11 @@ class HttpRequestEncoderTest extends HttpEncoderTest<HttpRequestMetaData> {
             NettyConnection<Object, Object> conn = resources.prepend(
                     TcpConnector.connect(null, serverHostAndPort(serverContext), cConfig.tcpConfig(), false,
                             CEC, (channel, connectionObserver) -> {
-                                CloseHandler closeHandler = spy(forPipelinedRequestResponse(true, channel));
+                                CloseHandler closeHandler = spy(forPipelinedRequestResponse(true, channel.config()));
                                 closeHandlerRef.compareAndSet(null, closeHandler);
                                 return DefaultNettyConnection.initChannel(channel, CEC.bufferAllocator(),
                                         CEC.executor(), CEC.ioExecutor(),
-                                        LAST_CHUNK_PREDICATE, closeHandler, defaultFlushStrategy(),
+                                        closeHandler, defaultFlushStrategy(),
                                         null, new TcpClientChannelInitializer(cConfig.tcpConfig(),
                                                 connectionObserver)
                                                 .andThen(new HttpClientChannelInitializer(
@@ -462,7 +459,7 @@ class HttpRequestEncoderTest extends HttpEncoderTest<HttpRequestMetaData> {
             assertThrows(ExecutionException.class, () -> write.toFuture().get());
             CloseHandler closeHandler = closeHandlerRef.get();
             assertNotNull(closeHandler);
-            verify(closeHandler, never()).protocolPayloadEndOutbound(any());
+            verify(closeHandler, never()).protocolPayloadEndOutbound(any(), any());
         }
     }
 

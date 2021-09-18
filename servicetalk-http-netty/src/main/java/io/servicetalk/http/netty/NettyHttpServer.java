@@ -95,7 +95,6 @@ import static io.servicetalk.http.api.HttpHeaderValues.ZERO;
 import static io.servicetalk.http.api.HttpProtocolVersion.HTTP_1_1;
 import static io.servicetalk.http.api.StreamingHttpRequests.newTransportRequest;
 import static io.servicetalk.http.netty.AbstractStreamingHttpConnection.determineFlushStrategyForApi;
-import static io.servicetalk.http.netty.HeaderUtils.LAST_CHUNK_PREDICATE;
 import static io.servicetalk.http.netty.HeaderUtils.addResponseTransferEncodingIfNecessary;
 import static io.servicetalk.http.netty.HeaderUtils.canAddResponseContentLength;
 import static io.servicetalk.http.netty.HeaderUtils.emptyMessageBody;
@@ -154,7 +153,7 @@ final class NettyHttpServer {
                                                          final boolean drainRequestPayloadBody,
                                                          final ConnectionObserver observer) {
         return initChannel(channel, httpExecutionContext, config, initializer, service, drainRequestPayloadBody,
-                observer, forPipelinedRequestResponse(false, channel));
+                observer, forPipelinedRequestResponse(false, channel.config()));
     }
 
     private static Single<NettyHttpServerConnection> initChannel(final Channel channel,
@@ -171,8 +170,8 @@ final class NettyHttpServer {
         }
         return showPipeline(DefaultNettyConnection.initChannel(channel,
                 httpExecutionContext.bufferAllocator(), httpExecutionContext.executor(),
-                httpExecutionContext.ioExecutor(), LAST_CHUNK_PREDICATE,
-                closeHandler, config.tcpConfig().flushStrategy(), config.tcpConfig().idleTimeoutMs(),
+                httpExecutionContext.ioExecutor(), closeHandler, config.tcpConfig().flushStrategy(),
+                        config.tcpConfig().idleTimeoutMs(),
                 initializer.andThen(getChannelInitializer(getByteBufAllocator(httpExecutionContext.bufferAllocator()),
                         h1Config, closeHandler)), httpExecutionContext.executionStrategy(), HTTP_1_1, observer, false)
                 .map(conn -> new NettyHttpServerConnection(conn, service,
@@ -277,6 +276,7 @@ final class NettyHttpServer {
                 private long contentLength;
                 @Override
                 public FlushBoundary detectBoundary(@Nullable final Object itemWritten) {
+                    assert protocol().major() <= 1;
                     if (itemWritten instanceof HttpResponseMetaData) {
                         final HttpResponseMetaData metadata = (HttpResponseMetaData) itemWritten;
                         contentLength = protocol().major() <= 1 ? HttpObjectDecoder.getContentLength(metadata) :
@@ -293,7 +293,11 @@ final class NettyHttpServer {
                     return InProgress;
                 }
             });
-            connection.updateFlushStrategy((current, isCurrentOriginal) -> splittingFlushStrategy);
+            // H2 uses child channels, doesn't support pipelining, and doesn't repeat the write operation on the same
+            // channel. We therefore don't need the splitting flush in this case.
+            if (protocol().major() <= 1) {
+                connection.updateFlushStrategy((current, isCurrentOriginal) -> splittingFlushStrategy);
+            }
             this.drainRequestPayloadBody = drainRequestPayloadBody;
             this.requireTrailerHeader = requireTrailerHeader;
             onClosing().subscribe(() -> this.onClosing = true);

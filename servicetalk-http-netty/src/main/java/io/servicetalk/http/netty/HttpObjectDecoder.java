@@ -287,7 +287,7 @@ abstract class HttpObjectDecoder<T extends HttpMetaData> extends ByteToMessageDe
 
                 message = createMessage(buffer, aStart, aEnd - aStart, bStart, bEnd - bStart, cStart, cLength);
                 currentState = State.READ_HEADER;
-                closeHandler.protocolPayloadBeginInbound();
+                closeHandler.protocolPayloadBeginInbound(ctx);
                 // fall-through
             }
             case READ_HEADER: {
@@ -297,7 +297,7 @@ abstract class HttpObjectDecoder<T extends HttpMetaData> extends ByteToMessageDe
                 }
                 assert message != null;
                 if (shouldClose(message)) {
-                    closeHandler.protocolClosingInbound();
+                    closeHandler.protocolClosingInbound(ctx);
                 }
                 currentState = nextState;
                 switch (nextState) {
@@ -306,7 +306,8 @@ abstract class HttpObjectDecoder<T extends HttpMetaData> extends ByteToMessageDe
                         // No content is expected.
                         ctx.fireChannelRead(message);
                         ctx.fireChannelRead(EmptyHttpHeaders.INSTANCE);
-                        // closeHandler.protocolPayloadEndInbound(ctx);
+                        closeHandler.protocolPayloadEndInbound(ctx);
+
                         resetNow();
                         return;
                     case READ_CHUNK_SIZE:
@@ -322,8 +323,10 @@ abstract class HttpObjectDecoder<T extends HttpMetaData> extends ByteToMessageDe
                         long contentLength = contentLength();
                         if (contentLength == 0 || contentLength == -1 && isDecodingRequest()) {
                             ctx.fireChannelRead(message);
-                            ctx.fireChannelRead(EmptyHttpHeaders.INSTANCE);
-                            // closeHandler.protocolPayloadEndInbound(ctx);
+                            if (contentLength != 0) {
+                                ctx.fireChannelRead(EmptyHttpHeaders.INSTANCE);
+                            }
+                            closeHandler.protocolPayloadEndInbound(ctx);
                             resetNow();
                             return;
                         }
@@ -379,8 +382,8 @@ abstract class HttpObjectDecoder<T extends HttpMetaData> extends ByteToMessageDe
                     // https://tools.ietf.org/html/rfc7230.html#section-4.1
                     // This is not chunked encoding so there will not be any trailers.
                     ctx.fireChannelRead(newBufferFrom(content));
-                    ctx.fireChannelRead(EmptyHttpHeaders.INSTANCE);
-                    // closeHandler.protocolPayloadEndInbound(ctx);
+                    // ctx.fireChannelRead(EmptyHttpHeaders.INSTANCE);
+                    closeHandler.protocolPayloadEndInbound(ctx);
                     resetNow();
                 } else {
                     ctx.fireChannelRead(newBufferFrom(content));
@@ -439,7 +442,7 @@ abstract class HttpObjectDecoder<T extends HttpMetaData> extends ByteToMessageDe
                     return;
                 }
                 ctx.fireChannelRead(trailer);
-                // closeHandler.protocolPayloadEndInbound(ctx);
+                closeHandler.protocolPayloadEndInbound(ctx);
                 resetNow();
                 return;
             }
@@ -487,7 +490,7 @@ abstract class HttpObjectDecoder<T extends HttpMetaData> extends ByteToMessageDe
                     (currentState == State.READ_CHUNK_SIZE && chunked && allowPrematureClosureBeforePayloadBody))) {
                 // End of connection.
                 ctx.fireChannelRead(EmptyHttpHeaders.INSTANCE);
-                // closeHandler.protocolPayloadEndInbound(ctx);
+                closeHandler.protocolPayloadEndInbound(ctx);
                 resetNow();
                 return;
             }
@@ -515,7 +518,7 @@ abstract class HttpObjectDecoder<T extends HttpMetaData> extends ByteToMessageDe
 
             if (!prematureClosure) {
                 ctx.fireChannelRead(EmptyHttpHeaders.INSTANCE);
-                // closeHandler.protocolPayloadEndInbound(ctx);
+                closeHandler.protocolPayloadEndInbound(ctx);
             }
             resetNow();
         }

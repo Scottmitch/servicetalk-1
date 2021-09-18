@@ -27,16 +27,15 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayDeque;
 import java.util.Queue;
-import java.util.function.Predicate;
 import javax.annotation.Nullable;
 
 import static io.servicetalk.concurrent.internal.FlowControlUtils.addWithOverflowProtection;
 import static io.servicetalk.concurrent.internal.SubscriberUtils.deliverErrorFromSource;
 import static io.servicetalk.concurrent.internal.SubscriberUtils.isRequestNValid;
 import static io.servicetalk.concurrent.internal.SubscriberUtils.newExceptionForInvalidRequestN;
+import static io.servicetalk.concurrent.internal.TerminalNotification.complete;
 import static io.servicetalk.transport.netty.internal.ChannelCloseUtils.assignConnectionError;
 import static io.servicetalk.transport.netty.internal.ChannelCloseUtils.close;
-import static java.util.Objects.requireNonNull;
 
 final class NettyChannelPublisher<T> extends SubscribablePublisher<T> {
     private static final Logger LOGGER = LoggerFactory.getLogger(NettyChannelPublisher.class);
@@ -54,13 +53,11 @@ final class NettyChannelPublisher<T> extends SubscribablePublisher<T> {
     private final Channel channel;
     private final CloseHandler closeHandler;
     private final EventLoop eventLoop;
-    private final Predicate<T> terminalSignalPredicate;
 
-    NettyChannelPublisher(Channel channel, Predicate<T> terminalSignalPredicate, CloseHandler closeHandler) {
+    NettyChannelPublisher(Channel channel, CloseHandler closeHandler) {
         this.eventLoop = channel.eventLoop();
         this.channel = channel;
         this.closeHandler = closeHandler;
-        this.terminalSignalPredicate = requireNonNull(terminalSignalPredicate);
     }
 
     @Override
@@ -89,6 +86,24 @@ final class NettyChannelPublisher<T> extends SubscribablePublisher<T> {
             }
         } else {
             emit(subscription, data);
+        }
+    }
+
+    /**
+     * Signifies all data has been read and {@link Subscriber#onComplete()} should be emitted.
+     */
+    void channelOnComplete() {
+        if (fatalError != null) {
+            return;
+        }
+
+        if (subscription == null || shouldBuffer()) {
+            addPending(complete());
+            if (subscription != null) {
+                processPending(subscription);
+            }
+        } else {
+            emitComplete(subscription);
         }
     }
 
@@ -121,6 +136,7 @@ final class NettyChannelPublisher<T> extends SubscribablePublisher<T> {
         if (fatalError != null) {
             return;
         }
+        fatalError = throwable;
         exceptionCaught0(throwable);
     }
 
@@ -132,7 +148,7 @@ final class NettyChannelPublisher<T> extends SubscribablePublisher<T> {
             addPending(TerminalNotification.error(throwable));
             processPending(subscription);
         } else {
-            sendErrorToTarget(subscription, throwable);
+            emitError(subscription, throwable);
         }
     }
 
@@ -178,7 +194,7 @@ final class NettyChannelPublisher<T> extends SubscribablePublisher<T> {
                         break;
                     }
                     if (p instanceof TerminalNotification) {
-                        sendErrorToTarget(target, (TerminalNotification) p);
+                        emit(target, (TerminalNotification) p);
                         return true;
                     }
                     if (emit(target, p)) {
@@ -191,7 +207,7 @@ final class NettyChannelPublisher<T> extends SubscribablePublisher<T> {
                     }
                 }
                 if (pending.peek() instanceof TerminalNotification) {
-                    sendErrorToTarget(target, (TerminalNotification) pending.poll());
+                    emit(target, (TerminalNotification) pending.poll());
                     return true;
                 }
             } finally {
@@ -202,45 +218,38 @@ final class NettyChannelPublisher<T> extends SubscribablePublisher<T> {
     }
 
     private boolean emit(SubscriptionImpl target, Object next) {
+        LOGGER.error("{} emit {}", channel, next);
         --requestCount;
-        @SuppressWarnings("unchecked")
-        final T t = (T) next;
-        /*
-         * In case when this Publisher is converted to a Single (with isLast always returning true),
-         * it should be possible for us to cancel the Subscription inside onNext.
-         * Operators like first that pick a single item does exactly that.
-         * If we do not resetSubscription() before onNext such a cancel will be illegal and close the connection.
-         */
-        final boolean isLast = terminalSignalPredicate.test(t);
-        LOGGER.error("emitting ch={} onNext={} last={}", channel, t, isLast);
-        if (isLast) {
-            resetSubscription();
-            closeHandler.protocolPayloadEndInbound();
-        }
         try {
+            @SuppressWarnings("unchecked")
+            final T t = (T) next;
             target.associatedSub.onNext(t);
         } catch (Throwable cause) {
             // Ensure we call subscriber.onError(..)  and cancel the subscription
-            sendErrorToTarget(target, cause);
+            emitError(target, cause);
 
             // Return true as we want to signal we had a terminal event.
-            return true;
-        }
-        if (isLast) {
-            LOGGER.error("emitting onComplete ch={}", channel);
-            target.associatedSub.onComplete();
             return true;
         }
         return false;
     }
 
-    private void sendErrorToTarget(SubscriptionImpl target, TerminalNotification terminal) {
-        Throwable throwable = terminal.cause();
-        assert throwable != null;
-        sendErrorToTarget(target, throwable);
+    private void emit(SubscriptionImpl target, TerminalNotification terminal) {
+        final Throwable cause = terminal.cause();
+        if (cause == null) {
+            emitComplete(target);
+        } else {
+            emitError(target, cause);
+        }
     }
 
-    private void sendErrorToTarget(SubscriptionImpl target, Throwable throwable) {
+    private void emitComplete(SubscriptionImpl target) {
+        LOGGER.error("{} emitComplete", channel);
+        resetSubscription();
+        target.associatedSub.onComplete();
+    }
+
+    private void emitError(SubscriptionImpl target, Throwable throwable) {
         resetSubscription();
         try {
             target.associatedSub.onError(throwable);
@@ -273,7 +282,7 @@ final class NettyChannelPublisher<T> extends SubscribablePublisher<T> {
     }
 
     private void closeChannelInbound() {
-        closeHandler.closeChannelInbound();
+        closeHandler.closeChannelInbound(channel);
     }
 
     private void resetSubscription() {
@@ -312,7 +321,7 @@ final class NettyChannelPublisher<T> extends SubscribablePublisher<T> {
             if (subscription == this.subscription && !processPending(subscription) &&
                     (fatalError != null && (pending == null || pending.isEmpty()))) {
                 // We are already on the eventloop, so we are sure that nobody else is emitting to the Subscriber.
-                sendErrorToTarget(subscription, fatalError);
+                emitError(subscription, fatalError);
             }
         }
     }

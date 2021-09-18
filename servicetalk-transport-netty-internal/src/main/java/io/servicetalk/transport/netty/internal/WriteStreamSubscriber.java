@@ -394,7 +394,7 @@ final class WriteStreamSubscriber implements PublisherSource.Subscriber<Object>,
                 if (closeOutboundIfIdle) {
                     // We have already terminated the subscriber (all writes have finished (one has failed)) then we
                     // just close the channel now.
-                    closeHandler.closeChannelOutbound();
+                    closeHandler.closeChannelOutbound(channel);
                 }
             } else if (activeWrites > 0) {
                 // Writes are pending, we will close the channel once writes are done.
@@ -408,7 +408,7 @@ final class WriteStreamSubscriber implements PublisherSource.Subscriber<Object>,
                 if (closeOutboundIfIdle) {
                     // Make sure the channel is closed. If this is from a timeout or non-transport error related
                     // cancellation the transport may not yet have been closed.
-                    closeHandler.closeChannelOutbound();
+                    closeHandler.closeChannelOutbound(channel);
                 }
             }
         }
@@ -497,7 +497,7 @@ final class WriteStreamSubscriber implements PublisherSource.Subscriber<Object>,
                     tryFailureOrLog(t);
                 }
                 if (hasFlag(CLOSE_OUTBOUND_ON_SUBSCRIBER_TERMINATION)) {
-                    closeHandler.closeChannelOutbound();
+                    closeHandler.closeChannelOutbound(channel);
                 }
             } else {
                 Throwable enrichedCause = enrichProtocolError.apply(cause);
