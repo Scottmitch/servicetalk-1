@@ -108,4 +108,9 @@ final class LoggingCloseHandler extends CloseHandler {
         LOGGER.error("{} gracefulUserClosing {}", channel, delegate);
         delegate.gracefulUserClosing(channel);
     }
+
+    @Override
+    public String toString() {
+        return getClass().getSimpleName() + "(" + delegate + ")";
+    }
 }

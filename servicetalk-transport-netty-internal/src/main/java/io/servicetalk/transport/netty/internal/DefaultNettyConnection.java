@@ -634,7 +634,7 @@ public final class DefaultNettyConnection<Read, Write> extends NettyChannelListe
 
         @Override
         public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-            connection.nettyChannelPublisher.exceptionCaught(unwrapThrowable(cause));
+            connection.nettyChannelPublisher.channelOnError(unwrapThrowable(cause));
         }
 
         /**
@@ -682,7 +682,7 @@ public final class DefaultNettyConnection<Read, Write> extends NettyChannelListe
                 // ChannelInputShutdownEvent is not always triggered and can get triggered before we tried to read
                 // all the available data. ChannelInputShutdownReadComplete is the one that seems to (at least in
                 // the current netty version) gets triggered reliably at the appropriate time.
-                connection.nettyChannelPublisher.channelInboundClosed(StacklessClosedChannelException.newInstance(
+                connection.nettyChannelPublisher.channelOnError(StacklessClosedChannelException.newInstance(
                         DefaultNettyConnection.class, "userEventTriggered(ChannelInputShutdownReadComplete)"));
             } else if (evt instanceof SslHandshakeCompletionEvent) {
                 connection.sslSession = extractSslSessionAndReport(ctx.pipeline(), (SslHandshakeCompletionEvent) evt,
@@ -714,7 +714,7 @@ public final class DefaultNettyConnection<Read, Write> extends NettyChannelListe
                     DefaultNettyConnection.class, "channelInactive(...)");
             tryFailSubscriber(closedChannelException);
             connection.channelOutboundListener.channelClosed(closedChannelException);
-            connection.nettyChannelPublisher.channelInboundClosed(closedChannelException);
+            connection.nettyChannelPublisher.channelOnError(closedChannelException);
         }
 
         private void doChannelActive(ChannelHandlerContext ctx) {

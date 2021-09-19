@@ -34,6 +34,7 @@ import static io.servicetalk.concurrent.internal.SubscriberUtils.deliverErrorFro
 import static io.servicetalk.concurrent.internal.SubscriberUtils.isRequestNValid;
 import static io.servicetalk.concurrent.internal.SubscriberUtils.newExceptionForInvalidRequestN;
 import static io.servicetalk.concurrent.internal.TerminalNotification.complete;
+import static io.servicetalk.concurrent.internal.TerminalNotification.error;
 import static io.servicetalk.transport.netty.internal.ChannelCloseUtils.assignConnectionError;
 import static io.servicetalk.transport.netty.internal.ChannelCloseUtils.close;
 
@@ -93,17 +94,38 @@ final class NettyChannelPublisher<T> extends SubscribablePublisher<T> {
      * Signifies all data has been read and {@link Subscriber#onComplete()} should be emitted.
      */
     void channelOnComplete() {
+        assertInEventloop();
         if (fatalError != null) {
             return;
         }
 
-        if (subscription == null || shouldBuffer()) {
+        if (subscription == null || hasQueuedSignals()) {
             addPending(complete());
             if (subscription != null) {
                 processPending(subscription);
             }
         } else {
             emitComplete(subscription);
+        }
+    }
+
+    void channelOnError(Throwable throwable) {
+        assertInEventloop();
+        if (fatalError == null) {
+            fatalError = throwable;
+            channelOnError0(throwable);
+        }
+    }
+
+    private void channelOnError0(Throwable throwable) {
+        assignConnectionError(channel, throwable);
+        if (subscription == null) {
+            closeChannelInbound();
+        } else if (hasQueuedSignals()) {
+            addPending(error(throwable));
+            processPending(subscription);
+        } else {
+            emitError(subscription, throwable);
         }
     }
 
@@ -117,7 +139,7 @@ final class NettyChannelPublisher<T> extends SubscribablePublisher<T> {
             if (fatalError == null) {
                 fatalError = new IllegalArgumentException("Reference counted leaked netty's pipeline. Object: " +
                         data.getClass().getSimpleName());
-                exceptionCaught0(fatalError);
+                channelOnError0(fatalError);
             }
             close(channel, fatalError);
         }
@@ -131,40 +153,11 @@ final class NettyChannelPublisher<T> extends SubscribablePublisher<T> {
         }
     }
 
-    void exceptionCaught(Throwable throwable) {
-        assertInEventloop();
-        if (fatalError != null) {
-            return;
-        }
-        fatalError = throwable;
-        exceptionCaught0(throwable);
-    }
-
-    private void exceptionCaught0(Throwable throwable) {
-        assignConnectionError(channel, throwable);
-        if (subscription == null) {
-            closeChannelInbound();
-        } else if (shouldBuffer()) {
-            addPending(TerminalNotification.error(throwable));
-            processPending(subscription);
-        } else {
-            emitError(subscription, throwable);
-        }
-    }
-
-    void channelInboundClosed(Throwable cause) {
-        assertInEventloop();
-        if (fatalError == null) {
-            fatalError = cause;
-            exceptionCaught0(fatalError);
-        }
-    }
-
     // All private methods MUST be invoked from the eventloop.
 
     private void requestN(long n, SubscriptionImpl forSubscription) {
         if (forSubscription != subscription) {
-            // Subscriptions shares common state hence a requestN after termination/cancellation must be ignored
+            // Subscription shares common state hence a requestN after termination/cancellation must be ignored
             return;
         }
         if (isRequestNValid(n)) {
@@ -193,11 +186,15 @@ final class NettyChannelPublisher<T> extends SubscribablePublisher<T> {
                     if (p == null) {
                         break;
                     }
+                    final boolean terminated;
                     if (p instanceof TerminalNotification) {
                         emit(target, (TerminalNotification) p);
-                        return true;
+                        terminated = true;
+                    } else {
+                        terminated = emit(target, p);
                     }
-                    if (emit(target, p)) {
+
+                    if (terminated) {
                         if (subscription == target || subscription == null) {
                             // stop draining the pending events if the current Subscription is still the same for which
                             // we started draining, continue emitting the remaining data if there is a new Subscriber
@@ -264,7 +261,7 @@ final class NettyChannelPublisher<T> extends SubscribablePublisher<T> {
 
     private void cancel(SubscriptionImpl forSubscription) {
         if (forSubscription != subscription) {
-            // Subscriptions shares common state hence a requestN after termination/cancellation must be ignored
+            // Subscription shares common state hence a requestN after termination/cancellation must be ignored
             return;
         }
         resetSubscription();
@@ -303,10 +300,15 @@ final class NettyChannelPublisher<T> extends SubscribablePublisher<T> {
     }
 
     private boolean shouldBuffer() {
-        return (pending != null && !pending.isEmpty()) || requestCount == 0;
+        return hasQueuedSignals() || requestCount == 0;
+    }
+
+    private boolean hasQueuedSignals() {
+        return (pending != null && !pending.isEmpty());
     }
 
     private void subscribe0(Subscriber<? super T> subscriber) {
+        LOGGER.error("{} subscribe0", channel, fatalError);
         SubscriptionImpl subscription = this.subscription;
         if (subscription != null) {
             deliverErrorFromSource(subscriber,
