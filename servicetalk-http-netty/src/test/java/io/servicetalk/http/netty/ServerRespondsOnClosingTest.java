@@ -246,10 +246,7 @@ class ServerRespondsOnClosingTest {
 
     private void respondWithFIN() throws InterruptedException {
         assertThat("Server did not shutdown output", channel.isOutputShutdown(), is(true));
-        // channel.shutdownInput().sync();    // simulate FIN from the client
-        // The server responds with content-length, and EmbeddedChannel completes writes synchronously, which will close
-        // the channel because the server completed the read/write.
-        assertThat(channel.isOpen(), is(false));
+        channel.shutdownInput().sync();    // simulate FIN from the client
     }
 
     private void assertServerConnectionClosed() throws Exception {

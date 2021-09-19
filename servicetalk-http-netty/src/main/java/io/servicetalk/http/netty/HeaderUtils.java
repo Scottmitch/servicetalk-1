@@ -35,7 +35,6 @@ import org.slf4j.LoggerFactory;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
-import java.util.function.Predicate;
 import javax.annotation.Nullable;
 
 import static io.servicetalk.buffer.api.CharSequences.parseLong;
@@ -110,7 +109,6 @@ final class HeaderUtils {
     }
 
     private static boolean shouldAppendTrailers(final HttpProtocolVersion protocolVersion) {
-
         // Always include trailers for h2 because trailers are allowed even if content-length is present, so we use
         // trailers as a token to know the stream is done (even if they are empty).
         return protocolVersion.major() != 1;
