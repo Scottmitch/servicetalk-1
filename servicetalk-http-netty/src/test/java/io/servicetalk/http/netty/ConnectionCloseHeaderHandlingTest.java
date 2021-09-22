@@ -18,6 +18,7 @@ package io.servicetalk.http.netty;
 import io.servicetalk.buffer.api.Buffer;
 import io.servicetalk.concurrent.BlockingIterator;
 import io.servicetalk.concurrent.PublisherSource;
+import io.servicetalk.concurrent.api.AsyncContext;
 import io.servicetalk.concurrent.api.Completable;
 import io.servicetalk.http.api.HttpPayloadWriter;
 import io.servicetalk.http.api.HttpServerBuilder;
@@ -89,6 +90,11 @@ import static org.junit.jupiter.api.Assumptions.assumeFalse;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 final class ConnectionCloseHeaderHandlingTest {
+
+    static {
+        AsyncContext.disable();
+    }
+
     private static final Logger LOGGER = LoggerFactory.getLogger(ConnectionCloseHeaderHandlingTest.class);
     private static final Collection<Boolean> TRUE_FALSE = asList(true, false);
     private static final String SERVER_SHOULD_CLOSE = "serverShouldClose";
