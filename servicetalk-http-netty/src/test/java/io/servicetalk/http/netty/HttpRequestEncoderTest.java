@@ -52,7 +52,10 @@ import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
+import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
@@ -87,6 +90,7 @@ import static java.lang.String.valueOf;
 import static java.nio.charset.StandardCharsets.US_ASCII;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -185,7 +189,6 @@ class HttpRequestEncoderTest extends HttpEncoderTest<HttpRequestMetaData> {
         byteBuf = channel.readOutbound();
         assertEquals(buffer.toNioBuffer(), byteBuf.nioBuffer());
         byteBuf.release();
-        consumeEmptyBufferFromTrailers(channel);
 
         assertFalse(channel.finishAndReleaseAll());
     }
@@ -280,14 +283,17 @@ class HttpRequestEncoderTest extends HttpEncoderTest<HttpRequestMetaData> {
         assertFalse(channel.finishAndReleaseAll());
     }
 
-    @Test
-    void variableWithTrailers() {
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void variableWithTrailers(boolean emptyTrailers) {
         EmbeddedChannel channel = newEmbeddedChannel();
         byte[] content = new byte[128];
         ThreadLocalRandom.current().nextBytes(content);
         Buffer buffer = allocator.wrap(content);
         HttpHeaders trailers = INSTANCE.newTrailers();
-        trailers.add("TrailerStatus", "good");
+        if (!emptyTrailers) {
+            trailers.add("TrailerStatus", "good");
+        }
         HttpRequestMetaData request = newRequestMetaData(HTTP_1_1,
                 GET, "/some/path?foo=bar&baz=yyy", INSTANCE.newHeaders());
         request.headers()
@@ -295,21 +301,27 @@ class HttpRequestEncoderTest extends HttpEncoderTest<HttpRequestMetaData> {
                 .add(USER_AGENT, "unit-test");
         channel.writeOutbound(request);
         channel.writeOutbound(buffer.duplicate());
-        channel.writeOutbound(trailers);
-        verifyHttpRequest(channel, buffer, TransferEncoding.Variable, false);
+        if (!emptyTrailers) {
+            assertThrows(IOException.class, () -> channel.writeOutbound(trailers));
+        } else {
+            verifyHttpRequest(channel, buffer, TransferEncoding.Variable, false);
+        }
 
         // The trailers will just not be encoded if the transfer encoding is not set correctly.
-        assertFalse(channel.finishAndReleaseAll());
+        assertNotEquals(emptyTrailers, channel.finishAndReleaseAll());
     }
 
-    @Test
-    void contentLengthWithTrailers() {
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void contentLengthWithTrailers(boolean emptyTrailers) {
         EmbeddedChannel channel = newEmbeddedChannel();
         byte[] content = new byte[128];
         ThreadLocalRandom.current().nextBytes(content);
         Buffer buffer = allocator.wrap(content);
         HttpHeaders trailers = INSTANCE.newTrailers();
-        trailers.add("TrailerStatus", "good");
+        if (!emptyTrailers) {
+            trailers.add("TrailerStatus", "good");
+        }
         HttpRequestMetaData request = newRequestMetaData(HTTP_1_1,
                 GET, "/some/path?foo=bar&baz=yyy", INSTANCE.newHeaders());
         request.headers()
@@ -318,11 +330,15 @@ class HttpRequestEncoderTest extends HttpEncoderTest<HttpRequestMetaData> {
                 .add(CONTENT_LENGTH, valueOf(content.length));
         channel.writeOutbound(request);
         channel.writeOutbound(buffer.duplicate());
-        channel.writeOutbound(trailers);
-        verifyHttpRequest(channel, buffer, TransferEncoding.ContentLength, false);
+        if (!emptyTrailers) {
+            assertThrows(IOException.class, () -> channel.writeOutbound(trailers));
+        } else {
+            channel.writeOutbound(trailers);
+            verifyHttpRequest(channel, buffer, TransferEncoding.ContentLength, false);
+        }
 
         // The trailers will just not be encoded if the transfer encoding is not set correctly.
-        assertFalse(channel.finishAndReleaseAll());
+        assertNotEquals(emptyTrailers, channel.finishAndReleaseAll());
     }
 
     private static String verifyHttpRequest(EmbeddedChannel channel, Buffer buffer, TransferEncoding encoding,
@@ -353,10 +369,6 @@ class HttpRequestEncoderTest extends HttpEncoderTest<HttpRequestMetaData> {
                     byteBuf = channel.readOutbound();
                     assertEquals("\r\n", byteBuf.toString(US_ASCII));
                     byteBuf.release();
-                } else {
-                    byteBuf = channel.readOutbound();
-                    assertFalse(byteBuf.isReadable());
-                    byteBuf.release();
                 }
 
                 if (trailers) {
@@ -375,13 +387,15 @@ class HttpRequestEncoderTest extends HttpEncoderTest<HttpRequestMetaData> {
                         () -> "unexpected metadata: " + actualMetaData);
                 byteBuf = channel.readOutbound();
                 assertEquals(buffer.toNioBuffer(), byteBuf.nioBuffer());
-                consumeEmptyBufferFromTrailers(channel);
                 break;
             case Variable:
                 byteBuf = channel.readOutbound();
-                assertEquals(buffer.toNioBuffer(), byteBuf.nioBuffer());
-                byteBuf.release();
-                consumeEmptyBufferFromTrailers(channel);
+                if (byteBuf == null) {
+                    assertEquals(0, buffer.readableBytes());
+                } else {
+                    assertEquals(buffer.toNioBuffer(), byteBuf.nioBuffer());
+                    byteBuf.release();
+                }
                 break;
             default:
                 throw new Error();

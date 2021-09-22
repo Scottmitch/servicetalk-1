@@ -44,6 +44,7 @@ import static io.servicetalk.http.api.HttpHeaderNames.CONTENT_LENGTH;
 import static io.servicetalk.http.api.HttpHeaderNames.SEC_WEBSOCKET_VERSION;
 import static io.servicetalk.http.api.HttpHeaderNames.TRANSFER_ENCODING;
 import static io.servicetalk.http.api.HttpRequestMethod.CONNECT;
+import static io.servicetalk.http.api.HttpRequestMethod.HEAD;
 import static io.servicetalk.http.api.HttpResponseStatus.NOT_MODIFIED;
 import static io.servicetalk.http.api.HttpResponseStatus.NO_CONTENT;
 import static io.servicetalk.http.api.HttpResponseStatus.SWITCHING_PROTOCOLS;
@@ -105,7 +106,7 @@ final class HttpResponseEncoder extends HttpObjectEncoder<HttpResponseMetaData> 
     @Override
     protected void sanitizeHeadersBeforeEncode(HttpResponseMetaData msg, boolean isAlwaysEmpty) {
         // This method has side effects on the methodQueue for the following reasons:
-        // - createMessage will not necessary fire a message up the pipeline.
+        // - createMessage will not necessarily fire a message up the pipeline.
         // - the trigger points on the queue are currently symmetric for the request/response decoder and
         // request/response encoder. We may use header information on the response decoder side, and the queue
         // interaction is conditional (1xx responses don't touch the queue).
@@ -142,6 +143,13 @@ final class HttpResponseEncoder extends HttpObjectEncoder<HttpResponseMetaData> 
 
     @Override
     protected boolean isContentAlwaysEmpty(HttpResponseMetaData msg) {
+        // Peek from the queue here as sanitizeHeadersBeforeEncode is responsible for poll.
+        HttpRequestMethod method = methodQueue.peek();
+        assert method != null;
+        if (HEAD.equals(method)) {
+            return true;
+        }
+
         // Correctly handle special cases as stated in:
         // https://tools.ietf.org/html/rfc7230#section-3.3.3
         final HttpResponseStatus status = msg.status();
@@ -155,6 +163,7 @@ final class HttpResponseEncoder extends HttpObjectEncoder<HttpResponseMetaData> 
             }
             return true;
         }
+
         return status.code() == NO_CONTENT.code() || status.code() == NOT_MODIFIED.code();
     }
 }

@@ -59,7 +59,7 @@ import static java.util.Objects.requireNonNull;
  * This handler is sufficient to implement <a href="https://tools.ietf.org/html/rfc7230#section-6.6">
  * https://tools.ietf.org/html/rfc7230#section-6.6</a> but is protocol-independent.
  */
-class RequestResponseCloseHandler extends CloseHandler {
+final class RequestResponseCloseHandler extends CloseHandler {
     private static final Logger LOGGER = LoggerFactory.getLogger(RequestResponseCloseHandler.class);
 
     private final boolean isClient;

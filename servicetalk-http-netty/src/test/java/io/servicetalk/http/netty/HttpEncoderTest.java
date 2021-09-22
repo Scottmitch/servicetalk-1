@@ -25,11 +25,12 @@ import io.netty.buffer.Unpooled;
 import io.netty.channel.embedded.EmbeddedChannel;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
+
 import static io.servicetalk.concurrent.internal.DeliberateException.DELIBERATE_EXCEPTION;
 import static io.servicetalk.http.api.DefaultHttpHeadersFactory.INSTANCE;
 import static io.servicetalk.http.api.HttpHeaderNames.TRANSFER_ENCODING;
 import static io.servicetalk.http.api.HttpHeaderValues.CHUNKED;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
@@ -49,13 +50,6 @@ abstract class HttpEncoderTest<T extends HttpMetaData> {
 
     abstract T newMetaData(HttpHeaders headers);
 
-    static void consumeEmptyBufferFromTrailers(EmbeddedChannel channel) {
-        // Empty buffer is written when trailers are seen to indicate the end of the request
-        ByteBuf byteBuf = channel.readOutbound();
-        assertFalse(byteBuf.isReadable());
-        byteBuf.release();
-    }
-
     @Test
     void internalByteBufReleasedOnMetaDataError() {
         ByteBuf buf = mock(ByteBuf.class);
@@ -65,7 +59,7 @@ abstract class HttpEncoderTest<T extends HttpMetaData> {
         EmbeddedChannel channel = newEmbeddedChannel();
         channel.config().setAllocator(alloc);
 
-        assertThrows(IndexOutOfBoundsException.class, () -> channel.writeOutbound(newMetaData(INSTANCE.newHeaders())));
+        assertThrows(IOException.class, () -> channel.writeOutbound(newMetaData(INSTANCE.newHeaders())));
 
         verify(alloc).directBuffer(anyInt());
         verify(buf).release();

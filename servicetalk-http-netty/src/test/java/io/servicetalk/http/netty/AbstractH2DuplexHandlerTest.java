@@ -236,7 +236,9 @@ class AbstractH2DuplexHandlerTest {
         assertThat(metaData.headers().get(CONTENT_LENGTH), contentEqualTo(valueOf(contentLength)));
         if (endStream) {
             HttpHeaders trailers = channel.readInbound();
-            assertThat(trailers.isEmpty(), is(true));
+            if (trailers != null) {
+                assertThat(trailers.isEmpty(), is(true));
+            }
         } else {
             // No more items at this moment:
             assertThat(channel.inboundMessages(), is(empty()));
@@ -309,7 +311,9 @@ class AbstractH2DuplexHandlerTest {
             channel.writeInbound(new DefaultHttp2HeadersFrame(new DefaultHttp2Headers().set("trailer", "value"), true));
         }
         HttpHeaders trailers = channel.readInbound();
-        assertThat(trailers.isEmpty(), is(!addTrailers));
+        if (trailers != null) {
+            assertThat(trailers.isEmpty(), is(!addTrailers));
+        }
         assertThat(channel.inboundMessages(), is(empty()));
     }
 
@@ -327,7 +331,9 @@ class AbstractH2DuplexHandlerTest {
         assertThat(metaData.headers().get(CONTENT_LENGTH), contentEqualTo(valueOf(0)));
 
         HttpHeaders trailers = channel.readInbound();
-        assertThat(trailers.isEmpty(), is(true));
+        if (trailers != null) {
+            assertThat(trailers.isEmpty(), is(true));
+        }
         assertThat(channel.inboundMessages(), is(empty()));
     }
 
