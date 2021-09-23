@@ -110,7 +110,7 @@ final class NonPipelinedCloseHandler extends CloseHandler {
 
     @Override
     void channelClosedInbound(final ChannelHandlerContext ctx) {
-        if (!isAnySet(state, IN_CLOSED)) {
+        if (!isAllSet(state, IN_CLOSED)) {
             state = unset(set(state, IN_CLOSED), READ);
             final CloseEvent evt = CHANNEL_CLOSED_INBOUND;
             storeCloseRequestAndEmit(evt);
@@ -120,7 +120,7 @@ final class NonPipelinedCloseHandler extends CloseHandler {
 
     @Override
     void channelClosedOutbound(final ChannelHandlerContext ctx) {
-        if (!isAnySet(state, OUT_CLOSED)) {
+        if (!isAllSet(state, OUT_CLOSED)) {
             state = unset(set(state, OUT_CLOSED), WRITE);
             final CloseEvent evt = CHANNEL_CLOSED_OUTBOUND;
             storeCloseRequestAndEmit(evt);
@@ -216,7 +216,7 @@ final class NonPipelinedCloseHandler extends CloseHandler {
     }
 
     private void closeChannel(final Channel channel, @Nullable final CloseEvent evt) {
-        if (!isAnySet(state, CLOSED)) {
+        if (!isAllSet(state, CLOSED)) {
             state = set(state, ALL_CLOSED);
             LOGGER.trace("{} Closing channel – evt: {}", channel, evt);
             channel.close();

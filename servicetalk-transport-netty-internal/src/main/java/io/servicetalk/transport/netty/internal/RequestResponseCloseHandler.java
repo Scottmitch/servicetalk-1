@@ -98,13 +98,13 @@ final class RequestResponseCloseHandler extends CloseHandler {
 
         byte ALL_CLOSED = CLOSED | IN_CLOSED | OUT_CLOSED;
         byte IN_OUT_CLOSED = IN_CLOSED | OUT_CLOSED;
-        byte MASK_IDLE = READ | WRITE;
+        byte READ_WRITE = READ | WRITE;
         byte DISCARDING_SERVER_IN_CLOSED = DISCARDING_SERVER_INPUT | IN_CLOSED;
         byte GRACEFUL_SERVER_OUT_CLOSED = OUT_CLOSED | CLOSING_SERVER_GRACEFULLY;
         byte GRACEFUL_SERVER_IN_CLOSED = IN_CLOSED | CLOSING_SERVER_GRACEFULLY;
 
         static boolean idle(int pending, byte state) {
-            return pending == 0 && (state & MASK_IDLE) == 0;
+            return pending == 0 && !isAnySet(state, READ_WRITE);
         }
     }
 
