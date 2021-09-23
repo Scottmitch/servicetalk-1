@@ -18,7 +18,6 @@ package io.servicetalk.http.netty;
 import io.servicetalk.buffer.api.Buffer;
 import io.servicetalk.concurrent.BlockingIterator;
 import io.servicetalk.concurrent.PublisherSource;
-import io.servicetalk.concurrent.api.AsyncContext;
 import io.servicetalk.concurrent.api.Completable;
 import io.servicetalk.http.api.HttpPayloadWriter;
 import io.servicetalk.http.api.HttpServerBuilder;

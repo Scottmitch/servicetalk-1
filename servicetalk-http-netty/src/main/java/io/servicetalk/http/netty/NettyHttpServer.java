@@ -93,6 +93,7 @@ import static io.servicetalk.concurrent.api.SourceAdapters.toSource;
 import static io.servicetalk.http.api.HttpHeaderNames.CONTENT_LENGTH;
 import static io.servicetalk.http.api.HttpHeaderValues.ZERO;
 import static io.servicetalk.http.api.HttpProtocolVersion.HTTP_1_1;
+import static io.servicetalk.http.api.HttpRequestMethod.HEAD;
 import static io.servicetalk.http.api.StreamingHttpRequests.newTransportRequest;
 import static io.servicetalk.http.netty.AbstractStreamingHttpConnection.determineFlushStrategyForApi;
 import static io.servicetalk.http.netty.HeaderUtils.addResponseTransferEncodingIfNecessary;
@@ -102,8 +103,10 @@ import static io.servicetalk.http.netty.HeaderUtils.flatEmptyMessage;
 import static io.servicetalk.http.netty.HeaderUtils.setResponseContentLength;
 import static io.servicetalk.http.netty.HeaderUtils.shouldAppendTrailers;
 import static io.servicetalk.http.netty.HttpDebugUtils.showPipeline;
+import static io.servicetalk.http.netty.HttpObjectDecoder.getContentLength;
 import static io.servicetalk.transport.netty.internal.CloseHandler.CloseEvent.CHANNEL_CLOSED_INBOUND;
 import static io.servicetalk.transport.netty.internal.CloseHandler.forPipelinedRequestResponse;
+import static io.servicetalk.transport.netty.internal.FlushStrategies.flushOnEach;
 import static io.servicetalk.transport.netty.internal.SplittingFlushStrategy.FlushBoundaryProvider.FlushBoundary.End;
 import static io.servicetalk.transport.netty.internal.SplittingFlushStrategy.FlushBoundaryProvider.FlushBoundary.InProgress;
 import static io.servicetalk.transport.netty.internal.SplittingFlushStrategy.FlushBoundaryProvider.FlushBoundary.Start;
@@ -247,10 +250,10 @@ final class NettyHttpServer {
         private final NettyConnection<Object, Object> connection;
         private final HttpHeadersFactory headersFactory;
         private final HttpExecutionContext executionContext;
+        @Nullable
         private final SplittingFlushStrategy splittingFlushStrategy;
         private final boolean drainRequestPayloadBody;
         private final boolean requireTrailerHeader;
-        private volatile boolean onClosing;
 
         NettyHttpServerConnection(final NettyConnection<Object, Object> connection,
                                   final StreamingHttpService service,
@@ -271,36 +274,36 @@ final class NettyHttpServer {
                     connection.executionContext().ioExecutor(), connection.executionContext().executor(),
                     HttpExecutionStrategies.noOffloadsStrategy());
             this.service = service;
-            this.splittingFlushStrategy = new SplittingFlushStrategy(connection.defaultFlushStrategy(),
-                    new FlushBoundaryProvider() {
-                private long contentLength;
-                @Override
-                public FlushBoundary detectBoundary(@Nullable final Object itemWritten) {
-                    assert protocol().major() <= 1;
-                    if (itemWritten instanceof HttpResponseMetaData) {
-                        final HttpResponseMetaData metadata = (HttpResponseMetaData) itemWritten;
-                        contentLength = protocol().major() <= 1 ? HttpObjectDecoder.getContentLength(metadata) :
-                                emptyMessageBody(metadata) ? 0 : -1;
-                        return contentLength == 0 ? End : Start;
-                    }
-                    if (itemWritten instanceof Buffer) {
-                        return contentLength > 0 && (contentLength -= ((Buffer) itemWritten).readableBytes()) <= 0 ?
-                                End : InProgress;
-                    }
-                    if (itemWritten instanceof HttpHeaders) {
-                        return End;
-                    }
-                    return InProgress;
-                }
-            });
             // H2 uses child channels, doesn't support pipelining, and doesn't repeat the write operation on the same
             // channel. We therefore don't need the splitting flush in this case.
             if (protocol().major() <= 1) {
+                this.splittingFlushStrategy = new SplittingFlushStrategy(connection.defaultFlushStrategy(),
+                        new FlushBoundaryProvider() {
+                            private long contentLength;
+                            @Override
+                            public FlushBoundary detectBoundary(@Nullable final Object itemWritten) {
+                                if (itemWritten instanceof HttpResponseMetaData) {
+                                    final HttpResponseMetaData metadata = (HttpResponseMetaData) itemWritten;
+                                    contentLength = getContentLength(metadata);
+                                    return contentLength == 0 ? End : Start;
+                                }
+                                if (itemWritten instanceof Buffer) {
+                                    return contentLength > 0 &&
+                                            (contentLength -= ((Buffer) itemWritten).readableBytes()) <= 0 ?
+                                            End : InProgress;
+                                }
+                                if (itemWritten instanceof HttpHeaders) {
+                                    return End;
+                                }
+                                return InProgress;
+                            }
+                        });
                 connection.updateFlushStrategy((current, isCurrentOriginal) -> splittingFlushStrategy);
+            } else {
+                this.splittingFlushStrategy = null;
             }
             this.drainRequestPayloadBody = drainRequestPayloadBody;
             this.requireTrailerHeader = requireTrailerHeader;
-            onClosing().subscribe(() -> this.onClosing = true);
         }
 
         void process(final boolean handleMultipleRequests) {
@@ -316,7 +319,8 @@ final class NettyHttpServer {
 
         @Override
         public Cancellable updateFlushStrategy(final FlushStrategyProvider strategyProvider) {
-            return splittingFlushStrategy.updateFlushStrategy(strategyProvider);
+            return splittingFlushStrategy == null ? connection.updateFlushStrategy(strategyProvider) :
+                    splittingFlushStrategy.updateFlushStrategy(strategyProvider);
         }
 
         @Override
@@ -370,6 +374,7 @@ final class NettyHttpServer {
 
                 final HttpRequestMethod requestMethod = request.method();
                 final HttpKeepAlive keepAlive = HttpKeepAlive.responseKeepAlive(request);
+                final boolean isHeadRequest = HEAD.equals(request.method());
                 Single<StreamingHttpResponse> respSingle;
                 try {
                     respSingle = service.handle(this, request, streamingResponseFactory());
@@ -382,10 +387,26 @@ final class NettyHttpServer {
                         .flatMapPublisher(response -> {
                             keepAlive.addConnectionHeaderIfNecessary(response);
 
-                            final FlushStrategy flushStrategy = determineFlushStrategyForApi(response);
-                            if (flushStrategy != null) {
+                            // SplittingFlushStrategy needs to be aware of protocols constraints in order to determine
+                            // boundaries between responses. However it isn't aware of request data and content-length
+                            // for HEAD requests won't actually be followed by payload. It also has a method
+                            // adjustForMissingBoundaries to accommodate for missing End boundaries, so just flush on
+                            // each. SplittingFlushStrategy should be removed when NettyHttpServer writes per request
+                            // instead of a single stream with repeat() operator, and this code can also be removed.
+                            if (isHeadRequest && splittingFlushStrategy != null) {
                                 splittingFlushStrategy.updateFlushStrategy(
-                                        (prev, isOriginal) -> isOriginal ? flushStrategy : prev, 1);
+                                        (prev, isOriginal) -> isOriginal ? flushOnEach() : prev, 1);
+                            } else {
+                                final FlushStrategy flushStrategy = determineFlushStrategyForApi(response);
+                                if (flushStrategy != null) {
+                                    final FlushStrategyProvider provider = (prev, isOriginal) ->
+                                            isOriginal ? flushStrategy : prev;
+                                    if (splittingFlushStrategy != null) {
+                                        splittingFlushStrategy.updateFlushStrategy(provider, 1);
+                                    } else {
+                                        updateFlushStrategy(provider);
+                                    }
+                                }
                             }
                             return handleResponse(protocol(), requestMethod, response);
                         });

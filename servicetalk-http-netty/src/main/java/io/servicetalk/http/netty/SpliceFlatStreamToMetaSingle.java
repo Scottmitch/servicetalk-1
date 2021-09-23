@@ -26,7 +26,6 @@ import io.servicetalk.concurrent.api.Single;
 import io.servicetalk.concurrent.api.internal.SubscribablePublisher;
 import io.servicetalk.concurrent.internal.DelayedSubscription;
 import io.servicetalk.concurrent.internal.DuplicateSubscribeException;
-import io.servicetalk.concurrent.internal.SubscriberUtils;
 import io.servicetalk.http.api.HttpResponseMetaData;
 import io.servicetalk.http.api.StreamingHttpResponse;
 
@@ -76,7 +75,7 @@ final class SpliceFlatStreamToMetaSingle<Data, MetaData, Payload> implements Pub
 
     /* Visible for testing */
     static final class SplicingSubscriber<Data, MetaData, Payload> implements PublisherSource.Subscriber<Object> {
-
+        @SuppressWarnings("rawtypes")
         private static final AtomicReferenceFieldUpdater<SplicingSubscriber, Object>
                 maybePayloadSubUpdater = AtomicReferenceFieldUpdater.newUpdater(SplicingSubscriber.class,
                 Object.class, "maybePayloadSub");

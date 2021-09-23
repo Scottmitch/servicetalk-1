@@ -144,8 +144,7 @@ final class HttpResponseEncoder extends HttpObjectEncoder<HttpResponseMetaData> 
     @Override
     protected boolean isContentAlwaysEmpty(HttpResponseMetaData msg) {
         // Peek from the queue here as sanitizeHeadersBeforeEncode is responsible for poll.
-        HttpRequestMethod method = methodQueue.peek();
-        assert method != null;
+        final HttpRequestMethod method = methodQueue.peek();
         if (HEAD.equals(method)) {
             return true;
         }

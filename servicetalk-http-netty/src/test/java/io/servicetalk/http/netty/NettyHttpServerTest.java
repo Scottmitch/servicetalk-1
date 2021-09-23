@@ -601,7 +601,7 @@ class NettyHttpServerTest extends AbstractNettyHttpServerTest {
 
             final BlockingIterator<Buffer> httpPayloadChunks = response.payloadBody().toIterable().iterator();
 
-            Exception e = assertThrows(Exception.class, () -> httpPayloadChunks.next());
+            Exception e = assertThrows(Exception.class, httpPayloadChunks::next);
             assertThat(e, either(instanceOf(RuntimeException.class)).or(instanceOf(ExecutionException.class)));
             // Due to a race condition, the exception cause here can vary.
             // If the socket closure is delayed slightly

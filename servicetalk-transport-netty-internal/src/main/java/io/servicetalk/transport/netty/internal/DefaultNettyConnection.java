@@ -590,9 +590,9 @@ public final class DefaultNettyConnection<Read, Write> extends NettyChannelListe
 
         NettyToStChannelInboundHandler(DefaultNettyConnection<Read, Write> connection,
                                        @Nullable
-                                               SingleSource.Subscriber<? super DefaultNettyConnection<Read, Write>> subscriber,
+                                       SingleSource.Subscriber<? super DefaultNettyConnection<Read, Write>> subscriber,
                                        @Nullable
-                                               DelayedCancellable delayedCancellable,
+                                       DelayedCancellable delayedCancellable,
                                        boolean waitForSslHandshake,
                                        ConnectionObserver observer) {
             this.connection = connection;
