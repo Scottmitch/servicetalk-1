@@ -17,7 +17,6 @@ package io.servicetalk.http.netty;
 
 import io.servicetalk.buffer.api.Buffer;
 import io.servicetalk.concurrent.BlockingIterator;
-import io.servicetalk.concurrent.PublisherSource;
 import io.servicetalk.concurrent.api.Completable;
 import io.servicetalk.http.api.HttpPayloadWriter;
 import io.servicetalk.http.api.HttpServerBuilder;
@@ -247,27 +246,6 @@ final class ConnectionCloseHeaderHandlingTest {
             CharSequence contentLengthHeader = response.headers().get(CONTENT_LENGTH);
             assertThat(contentLengthHeader, is(notNullValue()));
             int actualContentLength = response.payloadBody().map(Buffer::readableBytes)
-                    .beforeSubscriber(() -> new PublisherSource.Subscriber<Integer>() {
-                        @Override
-                        public void onSubscribe(final PublisherSource.Subscription subscription) {
-                            LOGGER.error("onSubscribe");
-                        }
-
-                        @Override
-                        public void onNext(@Nullable final Integer integer) {
-                            LOGGER.error("onNext {}", integer);
-                        }
-
-                        @Override
-                        public void onError(final Throwable t) {
-                            LOGGER.error("onError", t);
-                        }
-
-                        @Override
-                        public void onComplete() {
-                            LOGGER.error("onComplete");
-                        }
-                    })
                     .collect(() -> 0, Integer::sum).toFuture().get();
             assertThat(valueOf(actualContentLength), contentEqualTo(contentLengthHeader));
         }

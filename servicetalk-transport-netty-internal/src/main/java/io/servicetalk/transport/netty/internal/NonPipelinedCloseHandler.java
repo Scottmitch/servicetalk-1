@@ -29,6 +29,10 @@ import static io.servicetalk.transport.netty.internal.CloseHandler.CloseEvent.CH
 import static io.servicetalk.transport.netty.internal.CloseHandler.CloseEvent.GRACEFUL_USER_CLOSING;
 import static io.servicetalk.transport.netty.internal.CloseHandler.CloseEvent.PROTOCOL_CLOSING_INBOUND;
 import static io.servicetalk.transport.netty.internal.CloseHandler.CloseEvent.PROTOCOL_CLOSING_OUTBOUND;
+import static io.servicetalk.transport.netty.internal.CloseHandlerUtils.isAllSet;
+import static io.servicetalk.transport.netty.internal.CloseHandlerUtils.isAnySet;
+import static io.servicetalk.transport.netty.internal.CloseHandlerUtils.set;
+import static io.servicetalk.transport.netty.internal.CloseHandlerUtils.unset;
 import static java.util.Objects.requireNonNull;
 
 final class NonPipelinedCloseHandler extends CloseHandler {
@@ -217,21 +221,5 @@ final class NonPipelinedCloseHandler extends CloseHandler {
             LOGGER.trace("{} Closing channel – evt: {}", channel, evt);
             channel.close();
         }
-    }
-
-    private static byte set(byte state, byte flags) {
-        return (byte) (state | flags);
-    }
-
-    private static byte unset(byte state, byte flags) {
-        return (byte) (state & ~flags);
-    }
-
-    private static boolean isAllSet(byte state, byte flags) {
-        return (state & flags) == flags;
-    }
-
-    private static boolean isAnySet(byte state, byte flags) {
-        return (state & flags) != 0;
     }
 }

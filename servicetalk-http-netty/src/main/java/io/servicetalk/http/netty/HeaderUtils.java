@@ -29,8 +29,6 @@ import io.servicetalk.http.api.StreamingHttpRequest;
 import io.servicetalk.http.api.StreamingHttpResponse;
 
 import io.netty.util.AsciiString;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -60,8 +58,6 @@ import static io.servicetalk.http.api.HttpResponseStatus.StatusClass.INFORMATION
 import static io.servicetalk.http.api.HttpResponseStatus.StatusClass.SUCCESSFUL_2XX;
 
 final class HeaderUtils {
-    private static final Logger LOGGER = LoggerFactory.getLogger(HeaderUtils.class);
-
     private HeaderUtils() {
         // no instances
     }
@@ -154,18 +150,12 @@ final class HeaderUtils {
     }
 
     static ScanWithMapper<Object, Object> appendTrailersMapper() {
-        return appendTrailersMapper(null);
-    }
-
-    static ScanWithMapper<Object, Object> appendTrailersMapper(@Nullable Object state) {
         return new ScanWithMapper<Object, Object>() {
-
             private boolean sawHeaders;
 
             @Nullable
             @Override
             public Object mapOnNext(@Nullable final Object next) {
-                LOGGER.error("insertTrailersMapper::mapOnNext {} ch={}", next, state);
                 if (next instanceof HttpHeaders) {
                     sawHeaders = true;
                 }
@@ -175,13 +165,11 @@ final class HeaderUtils {
             @Nullable
             @Override
             public Object mapOnError(final Throwable t) throws Throwable {
-                LOGGER.error("insertTrailersMapper::mapOnError ch={}", state, t);
                 throw t;
             }
 
             @Override
             public Object mapOnComplete() {
-                LOGGER.error("insertTrailersMapper::mapOnComplete ch={}", state);
                 return EmptyHttpHeaders.INSTANCE;
             }
 

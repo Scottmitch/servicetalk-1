@@ -38,9 +38,6 @@ import io.servicetalk.transport.api.IoThreadFactory;
 import io.servicetalk.transport.netty.internal.FlushStrategy;
 import io.servicetalk.transport.netty.internal.NettyConnectionContext;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import javax.annotation.Nullable;
 
 import static io.servicetalk.concurrent.api.Publisher.failed;
@@ -61,7 +58,6 @@ import static java.util.Objects.requireNonNull;
 
 abstract class AbstractStreamingHttpConnection<CC extends NettyConnectionContext>
         implements FilterableStreamingHttpConnection, ClientInvoker<FlushStrategy> {
-    private static final Logger LOGGER = LoggerFactory.getLogger(AbstractStreamingHttpConnection.class);
     private static final IgnoreConsumedEvent<Integer> ZERO_MAX_CONCURRENCY_EVENT = new IgnoreConsumedEvent<>(0);
 
     final CC connection;
@@ -123,7 +119,7 @@ abstract class AbstractStreamingHttpConnection<CC extends NettyConnectionContext
                     // requests with non-replayable messageBody
                     flatRequest = Single.<Object>succeeded(request).concat(request.messageBody(), true);
                     if (shouldAppendTrailers(connectionContext().protocol(), request.headers())) {
-                        flatRequest = flatRequest.scanWith(() -> HeaderUtils.appendTrailersMapper(connection));
+                        flatRequest = flatRequest.scanWith(HeaderUtils::appendTrailersMapper);
                     }
                 }
                 addRequestTransferEncodingIfNecessary(request);
