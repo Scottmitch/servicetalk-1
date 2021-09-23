@@ -345,7 +345,12 @@ final class WriteStreamSubscriber implements PublisherSource.Subscriber<Object>,
 
         boolean isWritable() {
             assert channel.eventLoop().inEventLoop();
-            return state == 0;// || (state & SOURCE_TERMINATED) == SOURCE_TERMINATED;
+            // OutboundDataEndEvent will set SOURCE_TERMINATED. Some protocols may know that the source should terminate
+            // before the user is done writing all the content. For example HTTP headers can say content-length: 0, and
+            // the protocol knows that we are done writing however they may have also written an empty buffer and/or
+            // empty trailers that needs to be consumed.
+            // return state == 0 || (state & SOURCE_TERMINATED) == SOURCE_TERMINATED;
+            return state == 0;
         }
 
         void writeNext(Object msg) {
