@@ -49,7 +49,6 @@ public abstract class CloseHandler {
         config.setOption(ALLOW_HALF_CLOSURE, TRUE);
         config.setAutoClose(false);
         return new RequestResponseCloseHandler(client);
-        // return new LoggingCloseHandler(new RequestResponseCloseHandler(client));
     }
 
     /**
@@ -64,7 +63,6 @@ public abstract class CloseHandler {
     public static CloseHandler forNonPipelined(boolean isClient, ChannelConfig config) {
         config.setAutoClose(false);
         return new NonPipelinedCloseHandler(isClient);
-        // return new LoggingCloseHandler(new NonPipelinedCloseHandler(isClient));
     }
 
     /**
