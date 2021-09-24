@@ -197,7 +197,7 @@ class DefaultNettyConnectionTest {
         publisher.onNext(TRAILER.duplicate());
         publisher.onComplete();
         pollChannelAndVerifyWrites("Hello2", TRAILER_MSG);
-        verifyPredictorCalled(1, hello1, hello2, TRAILER);
+        verifyPredictorCalled(2, hello1, hello2, TRAILER);
         writeListener.awaitOnComplete();
     }
 

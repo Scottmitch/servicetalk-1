@@ -503,7 +503,7 @@ class NettyChannelPublisherTest {
             }
         });
         assertThat("Unexpected value.", resultRef.get(), is(1));
-        assertThat("Channel closed.", channel.closeFuture().isDone(), is(false));
+        assertThat("Channel closed.", channel.closeFuture().isDone(), is(true));
     }
 
     @Test
@@ -607,10 +607,8 @@ class NettyChannelPublisherTest {
         assertFalse(channel.isActive());
         assertFalse(channel.isOpen());
 
-        AtomicReference<Throwable> exRef = new AtomicReference<>();
-        publisher.beforeOnError(exRef::set).forEach(__ -> { });
-        assertThat("Subscriber active post channel error.", exRef.get(),
-                is(instanceOf(ClosedChannelException.class)));
+        toSource(publisher).subscribe(subscriber2);
+        assertThat(subscriber2.awaitOnError(), sameInstance(DELIBERATE_EXCEPTION));
     }
 
     @Test
@@ -659,8 +657,7 @@ class NettyChannelPublisherTest {
 
         assertThat(subscriber.takeOnNext(), is(1));
         assertThat(subscriber.awaitOnError(), sameInstance(DELIBERATE_EXCEPTION));
-        // only the active subscriber sees the initial exception, subsequent subscribers will observe a closed channel
-        assertThat(subscriber2.awaitOnError(), instanceOf(ClosedChannelException.class));
+        assertThat(subscriber2.awaitOnError(), sameInstance(DELIBERATE_EXCEPTION));
     }
 
     private void testChannelReadThrows(boolean requestLate) {

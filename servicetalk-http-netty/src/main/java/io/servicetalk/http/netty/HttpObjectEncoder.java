@@ -52,6 +52,7 @@ import java.util.Map;
 
 import static io.netty.buffer.ByteBufUtil.writeMediumBE;
 import static io.netty.buffer.ByteBufUtil.writeShortBE;
+import static io.netty.buffer.Unpooled.EMPTY_BUFFER;
 import static io.netty.buffer.Unpooled.directBuffer;
 import static io.netty.buffer.Unpooled.unreleasableBuffer;
 import static io.netty.buffer.Unpooled.wrappedBuffer;
@@ -131,8 +132,9 @@ abstract class HttpObjectEncoder<T extends HttpMetaData> extends ChannelOutbound
             } else if (state > 0) {
                 tryTooLittleContent(ctx, msg, promise);
                 return;
+            } else if (state == -1) {
+                unknownContentLengthNewRequest(ctx);
             }
-            // todo(scott): if state == -1 (content-length unknown, what do we do)?
 
             T metaData = castMetaData(msg);
             LOGGER.error("{} write hdrs={}", ctx.channel(), metaData.toString((k, v) -> v));
@@ -243,6 +245,13 @@ abstract class HttpObjectEncoder<T extends HttpMetaData> extends ChannelOutbound
         assert state > 0;
         promise.tryFailure(new IOException("encoding completed on write " + msg + ", but missing " + state +
                 " bytes from content-length on channel: " + ctx.channel()));
+    }
+
+    private void unknownContentLengthNewRequest(ChannelHandlerContext ctx) {
+        // If state == -1 we don't know the content length, signal end of outbound and best effort continue.
+        ChannelPromise emptyWritePromise = ctx.newPromise();
+        ctx.write(EMPTY_BUFFER, emptyWritePromise);
+        closeHandler.protocolPayloadEndOutbound(ctx, emptyWritePromise);
     }
 
     private static void tryIoException(ChannelHandlerContext ctx, Throwable e, ChannelPromise promise) {

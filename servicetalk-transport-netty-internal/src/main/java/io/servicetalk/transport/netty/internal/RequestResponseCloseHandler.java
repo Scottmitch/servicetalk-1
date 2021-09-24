@@ -171,10 +171,7 @@ final class RequestResponseCloseHandler extends CloseHandler {
 
     @Override
     public void protocolPayloadEndOutbound(final ChannelHandlerContext ctx, final ChannelPromise promise) {
-        // NettyHttpServer writes a single stream and uses repeat(true). This provides a trigger for the server to know
-        // when the stream has ended on the server side. If the server moves to an independent operation per write
-        // instead of using repeat() then OutboundDataEndEvent shouldn't be necessary.
-        if (!isClient && closeEvent != null && pending == 0) {
+        if (isClient || (closeEvent != null && pending == 0)) {
             ctx.pipeline().fireUserEventTriggered(OutboundDataEndEvent.INSTANCE);
         }
         promise.addListener(f -> {

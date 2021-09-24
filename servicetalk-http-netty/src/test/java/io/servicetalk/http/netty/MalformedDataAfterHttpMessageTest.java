@@ -29,6 +29,7 @@ import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.socket.ServerSocketChannel;
+import io.netty.handler.codec.DecoderException;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpRequestDecoder;
@@ -38,7 +39,6 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
-import java.nio.channels.ClosedChannelException;
 import java.util.concurrent.CountDownLatch;
 
 import static io.netty.buffer.ByteBufUtil.writeAscii;
@@ -96,7 +96,7 @@ class MalformedDataAfterHttpMessageTest {
             assertThat(response.payloadBody(textSerializerUtf8()), equalTo(CONTENT));
 
             // Verify that the next request fails and connection gets closed:
-            assertThrows(ClosedChannelException.class, () -> connection.request(connection.get("/")));
+            assertThrows(DecoderException.class, () -> connection.request(connection.get("/")));
             connectionClosedLatch.await();
         } finally {
             server.close().sync();

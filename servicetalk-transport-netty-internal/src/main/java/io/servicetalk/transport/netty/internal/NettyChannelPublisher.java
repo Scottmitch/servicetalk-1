@@ -121,7 +121,8 @@ final class NettyChannelPublisher<T> extends SubscribablePublisher<T> {
         assignConnectionError(channel, throwable);
         if (subscription == null) {
             closeChannelInbound();
-        } else if (hasQueuedSignals()) {
+        }
+        if (hasQueuedSignals()) {
             addPending(error(throwable));
             processPending(subscription);
         } else {
@@ -135,13 +136,9 @@ final class NettyChannelPublisher<T> extends SubscribablePublisher<T> {
         } finally {
             // We do not expect ref-counted objects here as ST does not support them and do not take care to clean them
             // in error conditions. Hence we fail-fast when we see such objects.
-            pending = null;
-            if (fatalError == null) {
-                fatalError = new IllegalArgumentException("Reference counted leaked netty's pipeline. Object: " +
-                        data.getClass().getSimpleName());
-                channelOnError0(fatalError);
-            }
-            close(channel, fatalError);
+            emitCatchError(subscription,
+                    new IllegalArgumentException("Reference counted leaked netty's pipeline. Object: " +
+                            data.getClass().getSimpleName()));
         }
     }
 
@@ -177,35 +174,38 @@ final class NettyChannelPublisher<T> extends SubscribablePublisher<T> {
     }
 
     private boolean processPending(SubscriptionImpl target) {
-        // Should always be called from eventloop. (assert done before calling)
+        // Should always be called from EventLoop. (assert done before calling)
         if (!inProcessPending && pending != null && !pending.isEmpty()) {
             inProcessPending = true;
             try {
-                while (requestCount > 0) {
-                    Object p = pending.poll();
-                    if (p == null) {
-                        break;
-                    }
-                    final boolean terminated;
-                    if (p instanceof TerminalNotification) {
-                        emit(target, (TerminalNotification) p);
-                        terminated = true;
-                    } else {
-                        terminated = emit(target, p);
-                    }
-
-                    if (terminated) {
-                        if (subscription == target || subscription == null) {
+                for (;;) {
+                    while (requestCount > 0) {
+                        Object p = pending.poll();
+                        if (p == null) {
+                            return false;
+                        } else if (p instanceof TerminalNotification) {
+                            emit(target, (TerminalNotification) p);
                             // stop draining the pending events if the current Subscription is still the same for which
                             // we started draining, continue emitting the remaining data if there is a new Subscriber
+                            if (subscription == target || subscription == null) {
+                                return true;
+                            }
+                            target = subscription;
+                        } else {
+                            emit(target, p);
+                        }
+                    }
+                    if (pending.peek() instanceof TerminalNotification) {
+                        emit(target, (TerminalNotification) pending.poll());
+                        // stop draining the pending events if the current Subscription is still the same for which
+                        // we started draining, continue emitting the remaining data if there is a new Subscriber
+                        if (subscription == target || subscription == null) {
                             return true;
                         }
                         target = subscription;
+                    } else {
+                        break;
                     }
-                }
-                if (pending.peek() instanceof TerminalNotification) {
-                    emit(target, (TerminalNotification) pending.poll());
-                    return true;
                 }
             } finally {
                 inProcessPending = false;
@@ -214,7 +214,7 @@ final class NettyChannelPublisher<T> extends SubscribablePublisher<T> {
         return false;
     }
 
-    private boolean emit(SubscriptionImpl target, Object next) {
+    private void emit(SubscriptionImpl target, Object next) {
         LOGGER.error("{} emit {}", channel, next);
         --requestCount;
         try {
@@ -222,13 +222,27 @@ final class NettyChannelPublisher<T> extends SubscribablePublisher<T> {
             final T t = (T) next;
             target.associatedSub.onNext(t);
         } catch (Throwable cause) {
-            // Ensure we call subscriber.onError(..)  and cancel the subscription
-            emitError(target, cause);
-
-            // Return true as we want to signal we had a terminal event.
-            return true;
+            emitCatchError(target, cause);
         }
-        return false;
+    }
+
+    private void emitCatchError(@Nullable SubscriptionImpl target, Throwable cause) {
+        // If we have items queued, we may deliver partial content to the next subscriber. So consider the error fatal.
+        if (pending != null) {
+            pending.clear();
+        }
+        if (fatalError == null) {
+            fatalError = cause;
+        }
+        try {
+            if (target != null) {
+                emitError(target, cause);
+            }
+        } finally {
+            // If an incomplete subscriber is cancelled then close channel. A subscriber can cancel after getting
+            // complete, which should not close the channel.
+            closeChannelInbound();
+        }
     }
 
     private void emit(SubscriptionImpl target, TerminalNotification terminal) {
@@ -268,14 +282,7 @@ final class NettyChannelPublisher<T> extends SubscribablePublisher<T> {
 
         // If a cancel occurs with a valid subscription we need to clear any pending data and set a fatalError so that
         // any future Subscribers don't get partial data delivered from the queue.
-        pending = null;
-        if (fatalError == null) {
-            fatalError = StacklessClosedChannelException.newInstance(NettyChannelPublisher.class, "cancel");
-        }
-
-        // If an incomplete subscriber is cancelled then close channel. A subscriber can cancel after getting complete,
-        // which should not close the channel.
-        closeChannelInbound();
+        emitCatchError(null, StacklessClosedChannelException.newInstance(NettyChannelPublisher.class, "cancel"));
     }
 
     private void closeChannelInbound() {
