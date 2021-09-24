@@ -244,7 +244,7 @@ class ServerRespondsOnClosingTest {
         assertThat("Unexpected response payload body", payloadBody.toString(US_ASCII), equalTo(RESPONSE_PAYLOAD_BODY));
     }
 
-    private void respondWithFIN() throws InterruptedException {
+    private void respondWithFIN() throws Exception {
         assertThat("Server did not shutdown output", channel.isOutputShutdown(), is(true));
         channel.shutdownInput().sync();    // simulate FIN from the client
     }

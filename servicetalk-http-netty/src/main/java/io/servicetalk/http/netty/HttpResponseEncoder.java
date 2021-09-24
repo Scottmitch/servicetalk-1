@@ -162,7 +162,6 @@ final class HttpResponseEncoder extends HttpObjectEncoder<HttpResponseMetaData> 
             }
             return true;
         }
-
         return status.code() == NO_CONTENT.code() || status.code() == NOT_MODIFIED.code();
     }
 }

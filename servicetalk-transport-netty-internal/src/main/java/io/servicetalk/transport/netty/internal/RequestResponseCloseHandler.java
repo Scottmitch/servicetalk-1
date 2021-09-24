@@ -35,10 +35,10 @@ import static io.servicetalk.transport.netty.internal.CloseHandler.CloseEvent.CH
 import static io.servicetalk.transport.netty.internal.CloseHandler.CloseEvent.GRACEFUL_USER_CLOSING;
 import static io.servicetalk.transport.netty.internal.CloseHandler.CloseEvent.PROTOCOL_CLOSING_INBOUND;
 import static io.servicetalk.transport.netty.internal.CloseHandler.CloseEvent.PROTOCOL_CLOSING_OUTBOUND;
-import static io.servicetalk.transport.netty.internal.CloseHandlerUtils.isAllSet;
-import static io.servicetalk.transport.netty.internal.CloseHandlerUtils.isAnySet;
-import static io.servicetalk.transport.netty.internal.CloseHandlerUtils.set;
-import static io.servicetalk.transport.netty.internal.CloseHandlerUtils.unset;
+import static io.servicetalk.transport.netty.internal.ByteMaskUtils.isAllSet;
+import static io.servicetalk.transport.netty.internal.ByteMaskUtils.isAnySet;
+import static io.servicetalk.transport.netty.internal.ByteMaskUtils.set;
+import static io.servicetalk.transport.netty.internal.ByteMaskUtils.unset;
 import static io.servicetalk.transport.netty.internal.RequestResponseCloseHandler.State.ALL_CLOSED;
 import static io.servicetalk.transport.netty.internal.RequestResponseCloseHandler.State.CLOSED;
 import static io.servicetalk.transport.netty.internal.RequestResponseCloseHandler.State.CLOSING_SERVER_GRACEFULLY;

@@ -50,8 +50,8 @@ abstract class OverlappingCapacityAwareEstimator implements WriteDemandEstimator
     @Override
     public final long estimateRequestN(long writeBufferCapacityInBytes) {
         assert writeBufferCapacityInBytes >= 0 : "Write buffer capacity must be non-negative.";
-        final long capacityToFill = outstandingRequested == 0 ?
-                writeBufferCapacityInBytes : writeBufferCapacityInBytes - lastSeenCapacity;
+        long capacityToFill = outstandingRequested == 0 ? writeBufferCapacityInBytes : writeBufferCapacityInBytes -
+                lastSeenCapacity;
         lastSeenCapacity = writeBufferCapacityInBytes;
         // Request the number of items that can fill the extra write buffer capacity since last requested.
         long toRequest = 0;

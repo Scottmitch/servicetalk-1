@@ -80,9 +80,6 @@ abstract class AbstractH2DuplexHandler extends ChannelDuplexHandler {
         if (buffer.readableBytes() > 0) {
             ctx.write(new DefaultHttp2DataFrame(encodeAndRetain(buffer), false), promise);
         } else {
-            // todo(scott) this may complete promises out of order if there are prior writes pending. can we do
-            //  the following instead:
-            // ctx.write(EmptyBuffer.EMPTY_BUFFER, promise);
             promise.setSuccess();
         }
     }
@@ -122,7 +119,6 @@ abstract class AbstractH2DuplexHandler extends ChannelDuplexHandler {
                 toRelease = release(dataFrame);
             }
             if (dataFrame.isEndStream()) {
-                // ctx.fireChannelRead(headersFactory.newEmptyTrailers());
                 closeHandler.protocolPayloadEndInbound(ctx);
             }
         } finally {

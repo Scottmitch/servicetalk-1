@@ -42,6 +42,9 @@ import java.util.function.UnaryOperator;
 import javax.annotation.Nullable;
 
 import static io.servicetalk.concurrent.internal.EmptySubscriptions.newEmptySubscription;
+import static io.servicetalk.transport.netty.internal.ByteMaskUtils.isAllSet;
+import static io.servicetalk.transport.netty.internal.ByteMaskUtils.isAnySet;
+import static io.servicetalk.transport.netty.internal.ByteMaskUtils.set;
 import static io.servicetalk.transport.netty.internal.ChannelCloseUtils.assignConnectionError;
 import static java.util.Objects.requireNonNull;
 
@@ -80,6 +83,7 @@ final class WriteStreamSubscriber implements PublisherSource.Subscriber<Object>,
     private static final byte CHANNEL_CLOSED = 1 << 1;
     private static final byte CLOSE_OUTBOUND_ON_SUBSCRIBER_TERMINATION = 1 << 2;
     private static final byte SUBSCRIBER_TERMINATED = 1 << 3;
+    private static final byte SUBSCRIBER_SOURCE_TERMINATED = SOURCE_TERMINATED | SUBSCRIBER_TERMINATED;
     private static final Subscription CANCELLED = newEmptySubscription();
     private static final AtomicReferenceFieldUpdater<WriteStreamSubscriber, Subscription> subscriptionUpdater =
             AtomicReferenceFieldUpdater.newUpdater(WriteStreamSubscriber.class, Subscription.class, "subscription");
@@ -304,7 +308,7 @@ final class WriteStreamSubscriber implements PublisherSource.Subscriber<Object>,
         @Override
         public ChannelPromise addListener(final GenericFutureListener<? extends Future<? super Void>> listener) {
             assert channel.eventLoop().inEventLoop();
-            if (hasFlag(SUBSCRIBER_TERMINATED)) {
+            if (isAllSet(state, SUBSCRIBER_TERMINATED)) {
                 return this;
             }
             listenersOnWriteBoundaries.addLast(listener);
@@ -316,7 +320,7 @@ final class WriteStreamSubscriber implements PublisherSource.Subscriber<Object>,
         public final ChannelPromise addListeners(
                 final GenericFutureListener<? extends Future<? super Void>>... listeners) {
             assert channel.eventLoop().inEventLoop();
-            if (hasFlag(SUBSCRIBER_TERMINATED)) {
+            if (isAllSet(state, SUBSCRIBER_TERMINATED)) {
                 return this;
             }
             for (GenericFutureListener<? extends Future<? super Void>> listener : listeners) {
@@ -345,11 +349,11 @@ final class WriteStreamSubscriber implements PublisherSource.Subscriber<Object>,
 
         boolean isWritable() {
             assert channel.eventLoop().inEventLoop();
-            // OutboundDataEndEvent will set SOURCE_TERMINATED. Some protocols may know that the source should terminate
-            // before the user is done writing all the content. For example HTTP headers can say content-length: 0, and
-            // the protocol knows we are done writing however the user may have also written an empty buffer and/or
-            // empty trailers that needs to be consumed.
-            return state == 0 || (state & SOURCE_TERMINATED) == SOURCE_TERMINATED;
+            // OutboundDataEndEvent will set SOURCE_TERMINATED. Some protocols may know the source should terminate
+            // before the user is done writing all the content. For example if HTTP headers includes content-length: 0,
+            // the protocol knows it is done after writing the metadata, but the user may have also written empty buffer
+            // and/or empty trailers that still need to be consumed.
+            return state == 0 || isAllSet(state, SOURCE_TERMINATED);
         }
 
         void writeNext(Object msg) {
@@ -364,7 +368,7 @@ final class WriteStreamSubscriber implements PublisherSource.Subscriber<Object>,
 
         void sourceTerminated(@Nullable Throwable cause) {
             assert eventLoop.inEventLoop();
-            if (hasAnyFlags(SUBSCRIBER_TERMINATED, SOURCE_TERMINATED)) {
+            if (isAnySet(state, SUBSCRIBER_SOURCE_TERMINATED)) {
                 // We have terminated prematurely perhaps due to write failure.
                 return;
             }
@@ -390,10 +394,10 @@ final class WriteStreamSubscriber implements PublisherSource.Subscriber<Object>,
 
         void close(Throwable cause, boolean closeOutboundIfIdle) {
             assert eventLoop.inEventLoop();
-            if (hasFlag(CHANNEL_CLOSED)) {
+            if (isAllSet(state, CHANNEL_CLOSED)) {
                 return;
             }
-            if (hasFlag(SUBSCRIBER_TERMINATED)) {
+            if (isAllSet(state, SUBSCRIBER_TERMINATED)) {
                 setFlag(CHANNEL_CLOSED);
                 if (closeOutboundIfIdle) {
                     // We have already terminated the subscriber (all writes have finished (one has failed)) then we
@@ -441,11 +445,11 @@ final class WriteStreamSubscriber implements PublisherSource.Subscriber<Object>,
 
         private boolean setSuccess0() {
             assert eventLoop.inEventLoop();
-            if (hasFlag(SUBSCRIBER_TERMINATED)) {
+            if (isAllSet(state, SUBSCRIBER_TERMINATED)) {
                 return nettySharedPromiseTryStatus();
             }
             observer.itemWritten();
-            if (--activeWrites == 0 && hasFlag(SOURCE_TERMINATED)) {
+            if (--activeWrites == 0 && isAllSet(state, SOURCE_TERMINATED)) {
                 setFlag(SUBSCRIBER_TERMINATED);
                 try {
                     terminateSubscriber(failureCause);
@@ -467,12 +471,12 @@ final class WriteStreamSubscriber implements PublisherSource.Subscriber<Object>,
             // fails then the remaining writes will also fail. So, for any write failure we close the channel and
             // ignore any further results. For non-reliable protocols, when we support them, we will modify this
             // behavior as appropriate.
-            if (hasFlag(SUBSCRIBER_TERMINATED)) {
+            if (isAllSet(state, SUBSCRIBER_TERMINATED)) {
                 return nettySharedPromiseTryStatus();
             }
             setFlag(SUBSCRIBER_TERMINATED);
             Subscription oldVal = subscriptionUpdater.getAndSet(WriteStreamSubscriber.this, CANCELLED);
-            if (oldVal != null && !hasFlag(SOURCE_TERMINATED)) {
+            if (oldVal != null && !isAllSet(state, SOURCE_TERMINATED)) {
                 oldVal.cancel();
             }
             terminateSubscriber(cause);
@@ -500,7 +504,7 @@ final class WriteStreamSubscriber implements PublisherSource.Subscriber<Object>,
                 } catch (Throwable t) {
                     tryFailureOrLog(t);
                 }
-                if (hasFlag(CLOSE_OUTBOUND_ON_SUBSCRIBER_TERMINATION)) {
+                if (isAllSet(state, CLOSE_OUTBOUND_ON_SUBSCRIBER_TERMINATION)) {
                     closeHandler.closeChannelOutbound(channel);
                 }
             } else {
@@ -514,7 +518,7 @@ final class WriteStreamSubscriber implements PublisherSource.Subscriber<Object>,
                     t.addSuppressed(enrichedCause);
                     tryFailureOrLog(t);
                 }
-                if (!hasFlag(CHANNEL_CLOSED)) {
+                if (!isAllSet(state, CHANNEL_CLOSED)) {
                     // Close channel on error, connection error is already assigned to the channel's attribute
                     channel.close();
                 }
@@ -550,16 +554,8 @@ final class WriteStreamSubscriber implements PublisherSource.Subscriber<Object>,
             }
         }
 
-        private boolean hasFlag(final byte flag) {
-            return (state & flag) == flag;
-        }
-
-        private boolean hasAnyFlags(final byte flag1, final byte flag2) {
-            return (state & (flag1 | flag2)) > 0;
-        }
-
-        private void setFlag(final byte flag) {
-            state |= flag;
+        private void setFlag(byte flag) {
+            state = set(state, flag);
         }
     }
 

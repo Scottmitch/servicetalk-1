@@ -302,7 +302,6 @@ abstract class HttpObjectDecoder<T extends HttpMetaData> extends ByteToMessageDe
                         // fast-path
                         // No content is expected.
                         ctx.fireChannelRead(message);
-                        // ctx.fireChannelRead(EmptyHttpHeaders.INSTANCE);
                         closeHandler.protocolPayloadEndInbound(ctx);
 
                         resetNow();
@@ -320,7 +319,6 @@ abstract class HttpObjectDecoder<T extends HttpMetaData> extends ByteToMessageDe
                         long contentLength = contentLength();
                         if (contentLength == 0 || contentLength == -1 && isDecodingRequest()) {
                             ctx.fireChannelRead(message);
-                            // ctx.fireChannelRead(EmptyHttpHeaders.INSTANCE);
                             closeHandler.protocolPayloadEndInbound(ctx);
                             resetNow();
                             return;
@@ -377,7 +375,6 @@ abstract class HttpObjectDecoder<T extends HttpMetaData> extends ByteToMessageDe
                     // https://tools.ietf.org/html/rfc7230.html#section-4.1
                     // This is not chunked encoding so there will not be any trailers.
                     ctx.fireChannelRead(newBufferFrom(content));
-                    // ctx.fireChannelRead(EmptyHttpHeaders.INSTANCE);
                     closeHandler.protocolPayloadEndInbound(ctx);
                     resetNow();
                 } else {
@@ -484,7 +481,6 @@ abstract class HttpObjectDecoder<T extends HttpMetaData> extends ByteToMessageDe
                     (currentState == State.READ_VARIABLE_LENGTH_CONTENT && !chunked) ||
                     (currentState == State.READ_CHUNK_SIZE && chunked && allowPrematureClosureBeforePayloadBody))) {
                 // End of connection.
-                // ctx.fireChannelRead(EmptyHttpHeaders.INSTANCE);
                 closeHandler.protocolPayloadEndInbound(ctx);
                 resetNow();
                 return;

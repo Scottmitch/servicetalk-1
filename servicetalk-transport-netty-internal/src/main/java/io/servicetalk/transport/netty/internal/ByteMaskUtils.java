@@ -15,8 +15,8 @@
  */
 package io.servicetalk.transport.netty.internal;
 
-final class CloseHandlerUtils {
-    private CloseHandlerUtils() {
+final class ByteMaskUtils {
+    private ByteMaskUtils() {
     }
 
     static byte set(byte state, byte flags) {
