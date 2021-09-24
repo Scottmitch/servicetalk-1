@@ -101,7 +101,7 @@ public final class DefaultNettyConnection<Read, Write> extends NettyChannelListe
     @SuppressWarnings("rawtypes")
     private static final AtomicReferenceFieldUpdater<DefaultNettyConnection, ChannelOutboundListener>
             writableListenerUpdater = newUpdater(DefaultNettyConnection.class, ChannelOutboundListener.class,
-            "channelOutboundListener");
+                                                 "channelOutboundListener");
 
     private final CloseHandler closeHandler;
     private final NettyChannelPublisher<Read> nettyChannelPublisher;

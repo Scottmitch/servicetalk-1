@@ -303,7 +303,6 @@ abstract class HttpObjectDecoder<T extends HttpMetaData> extends ByteToMessageDe
                         // No content is expected.
                         ctx.fireChannelRead(message);
                         closeHandler.protocolPayloadEndInbound(ctx);
-
                         resetNow();
                         return;
                     case READ_CHUNK_SIZE:
@@ -508,7 +507,6 @@ abstract class HttpObjectDecoder<T extends HttpMetaData> extends ByteToMessageDe
             }
 
             if (!prematureClosure) {
-                // ctx.fireChannelRead(EmptyHttpHeaders.INSTANCE);
                 closeHandler.protocolPayloadEndInbound(ctx);
             }
             resetNow();
