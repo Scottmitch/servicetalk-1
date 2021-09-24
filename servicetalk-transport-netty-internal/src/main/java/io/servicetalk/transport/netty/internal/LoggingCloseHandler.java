@@ -24,7 +24,7 @@ import io.netty.channel.ChannelPromise;
 
 import java.util.function.Consumer;
 
-import static io.servicetalk.logging.api.LogLevel.DEBUG;
+import static io.servicetalk.logging.api.LogLevel.ERROR;
 import static io.servicetalk.logging.slf4j.internal.Slf4jFixedLevelLoggers.newLogger;
 
 final class LoggingCloseHandler extends CloseHandler {
@@ -32,7 +32,7 @@ final class LoggingCloseHandler extends CloseHandler {
     private final FixedLevelLogger logger;
 
     LoggingCloseHandler(final CloseHandler delegate) {
-        this(delegate, LoggingCloseHandler.class.getSimpleName(), DEBUG);
+        this(delegate, LoggingCloseHandler.class.getSimpleName(), ERROR);
     }
 
     private LoggingCloseHandler(final CloseHandler delegate, final String loggerName, final LogLevel logLevel) {

@@ -382,6 +382,9 @@ class GracefulConnectionClosureHandlingTest {
                                                            boolean initiateClosureFromClient,
                                                            boolean useUds,
                                                            boolean viaProxy) throws Exception {
+        LOGGER.error("closeAfterFullRequestSentResponseMetaDataReceived protocol={} initiateClosureFromClient={} " +
+                "useUds={} viaProxy={}",
+                protocol, initiateClosureFromClient, useUds, viaProxy);
         setUp(protocol, initiateClosureFromClient, useUds, viaProxy);
         StreamingHttpRequest request = newRequest("/first");
         Future<StreamingHttpResponse> responseFuture = connection.request(request).toFuture();

@@ -8,7 +8,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        java: [ 8, 11, 17 ]
+        java: [ 17 ]
         os: [ ubuntu-latest ]
     steps:
       - name: Checkout Code
@@ -35,7 +35,7 @@ jobs:
         env:
           CI: true
           JAVA_TOOL_OPTIONS: -Dfile.encoding=UTF-8
-        run: ./gradlew --parallel clean test
+        run: cd servicetalk-http-netty && while ../gradlew test --tests '*GracefulConnectionClosureHandlingTest.closeAfterFullRequestSentResponseMetaDataReceived'; do echo "Next run.."; done
       - name: Upload Test Results
         if: always()
         uses: actions/upload-artifact@v2

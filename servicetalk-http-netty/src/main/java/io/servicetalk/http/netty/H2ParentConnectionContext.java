@@ -36,6 +36,7 @@ import io.servicetalk.transport.netty.internal.StacklessClosedChannelException;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
+import io.netty.channel.socket.ChannelInputShutdownReadComplete;
 import io.netty.handler.codec.http2.Http2GoAwayFrame;
 import io.netty.handler.codec.http2.Http2PingFrame;
 import io.netty.handler.codec.http2.Http2SettingsAckFrame;
@@ -235,6 +236,8 @@ class H2ParentConnectionContext extends NettyChannelListenableAsyncCloseable imp
                             (SslHandshakeCompletionEvent) evt, this::tryFailSubscriber,
                             observer != NoopConnectionObserver.INSTANCE);
                     tryCompleteSubscriber();
+                } else if (evt == ChannelInputShutdownReadComplete.INSTANCE) {
+                    parentContext.keepAliveManager.channelInputShutdown();
                 }
             } finally {
                 release(evt);

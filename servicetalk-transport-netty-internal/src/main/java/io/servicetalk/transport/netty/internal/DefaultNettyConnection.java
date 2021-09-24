@@ -662,6 +662,7 @@ public final class DefaultNettyConnection<Read, Write> extends NettyChannelListe
 
         @Override
         public void userEventTriggered(ChannelHandlerContext ctx, Object evt) {
+            LOGGER.error("{} userEventTriggered {}", ctx.channel(), evt);
             if (evt == CloseHandler.InboundDataEndEvent.INSTANCE) {
                 connection.nettyChannelPublisher.channelOnComplete();
             } else if (evt == CloseHandler.OutboundDataEndEvent.INSTANCE) {
