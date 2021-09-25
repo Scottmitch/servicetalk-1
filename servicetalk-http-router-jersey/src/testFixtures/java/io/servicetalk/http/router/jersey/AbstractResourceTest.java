@@ -24,6 +24,8 @@ import io.servicetalk.http.router.jersey.resources.SynchronousResources;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
@@ -69,6 +71,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
 public abstract class AbstractResourceTest extends AbstractJerseyStreamingHttpServiceTest {
+    private static final Logger LOGGER = LoggerFactory.getLogger(AbstractResourceTest.class);
     private boolean serverNoOffloads;
 
     void setUp(final boolean serverNoOffloads, final RouterApi api) {
@@ -203,6 +206,7 @@ public abstract class AbstractResourceTest extends AbstractJerseyStreamingHttpSe
     @ParameterizedTest(name = "{1} server-no-offloads = {0}")
     @MethodSource("data")
     void getText(final boolean serverNoOffloads, final RouterApi api) {
+        LOGGER.error("getText serverNoOffloads={} api={} ", serverNoOffloads, api);
         setUp(serverNoOffloads, api);
         runTwiceToEnsureEndpointCache(() -> {
             sendAndAssertResponse(get("/text"), OK, TEXT_PLAIN, "GOT: null & null");
