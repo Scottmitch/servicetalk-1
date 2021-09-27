@@ -277,9 +277,11 @@ final class NettyHttpServer {
                             private long contentLength;
                             @Override
                             public FlushBoundary detectBoundary(@Nullable final Object itemWritten) {
+                                LOGGER.error("{} detectBoundary item={}", nettyChannel(), itemWritten);
                                 if (itemWritten instanceof HttpResponseMetaData) {
                                     final HttpResponseMetaData metadata = (HttpResponseMetaData) itemWritten;
                                     contentLength = getContentLength(metadata);
+                                    LOGGER.error("{} detectBoundary contentLength={}", nettyChannel(), contentLength);
                                     return contentLength == 0 ? End : Start;
                                 }
                                 if (itemWritten instanceof Buffer) {
