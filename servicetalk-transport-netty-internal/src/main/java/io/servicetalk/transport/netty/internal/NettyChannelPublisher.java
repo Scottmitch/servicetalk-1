@@ -215,6 +215,7 @@ final class NettyChannelPublisher<T> extends SubscribablePublisher<T> {
     }
 
     private void emit(SubscriptionImpl target, Object next) {
+        LOGGER.error("{} emit {}", channel, next);
         assert requestCount > 0;
         --requestCount;
         try {
@@ -254,6 +255,7 @@ final class NettyChannelPublisher<T> extends SubscribablePublisher<T> {
     }
 
     private void emitComplete(SubscriptionImpl target) {
+        LOGGER.error("{} emitComplete", channel);
         resetSubscription();
         try {
             target.associatedSub.onComplete();
@@ -263,6 +265,7 @@ final class NettyChannelPublisher<T> extends SubscribablePublisher<T> {
     }
 
     private void emitError(SubscriptionImpl target, Throwable throwable) {
+        LOGGER.error("{} emitError", channel, throwable);
         resetSubscription();
         try {
             target.associatedSub.onError(throwable);

@@ -44,6 +44,8 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelOutboundHandlerAdapter;
 import io.netty.channel.ChannelPromise;
 import io.netty.util.concurrent.PromiseCombiner;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.Map;
@@ -72,6 +74,7 @@ import static java.lang.Math.max;
 import static java.nio.charset.StandardCharsets.US_ASCII;
 
 abstract class HttpObjectEncoder<T extends HttpMetaData> extends ChannelOutboundHandlerAdapter {
+    private static final Logger LOGGER = LoggerFactory.getLogger(HttpObjectEncoder.class);
     static final int CRLF_SHORT = (CR << 8) | LF;
     private static final int ZERO_CRLF_MEDIUM = ('0' << 16) | CRLF_SHORT;
     private static final int COLON_AND_SPACE_SHORT = (COLON << 8) | SP;
@@ -121,6 +124,7 @@ abstract class HttpObjectEncoder<T extends HttpMetaData> extends ChannelOutbound
 
     @Override
     public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) {
+        LOGGER.error("{} write {}", ctx.channel(), msg);
         if (msg instanceof HttpMetaData) {
             if (state == CONTENT_LEN_CHUNKED) {
                 // The user didn't write any trailers, so just send the last chunk.
@@ -133,6 +137,7 @@ abstract class HttpObjectEncoder<T extends HttpMetaData> extends ChannelOutbound
             }
 
             T metaData = castMetaData(msg);
+            LOGGER.error("{} write {}", ctx.channel(), metaData.toString((k,v) -> v));
             closeHandler.protocolPayloadBeginOutbound(ctx);
             if (shouldClose(metaData)) {
                 closeHandler.protocolClosingOutbound(ctx);
