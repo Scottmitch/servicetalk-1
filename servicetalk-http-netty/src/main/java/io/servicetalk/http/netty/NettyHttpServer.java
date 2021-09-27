@@ -282,7 +282,10 @@ final class NettyHttpServer {
                                     final HttpResponseMetaData metadata = (HttpResponseMetaData) itemWritten;
                                     contentLength = getContentLength(metadata);
                                     LOGGER.error("{} detectBoundary contentLength={}", nettyChannel(), contentLength);
-                                    return contentLength == 0 ? End : Start;
+                                    // The content length maybe unknown at this point (e.g. 204 response) but then later
+                                    // derived to be 0. In that case we should conservatively use End and rely upon
+                                    // adjustForMissingBoundaries to accommodate if more data comes.
+                                    return contentLength <= 0 ? End : Start;
                                 }
                                 if (itemWritten instanceof Buffer) {
                                     return contentLength > 0 &&
