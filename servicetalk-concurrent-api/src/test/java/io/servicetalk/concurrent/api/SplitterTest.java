@@ -22,6 +22,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import javax.annotation.Nullable;
 
 import static io.servicetalk.concurrent.api.SourceAdapters.toSource;
@@ -32,20 +33,19 @@ class SplitterTest {
 
     @Test
     void basic() {
+        final ArrayList<Splitter<Integer>.SplitterSubscriber> subscribers = new ArrayList<>();
+        final AtomicInteger itemIndex = new AtomicInteger();
         Publisher<Integer> publisher = Publisher.range(0, 4);
-        Publisher<Integer> fanOut = Publisher.defer(() -> {
-            final ArrayList<PublisherSource.Subscriber<? super Integer>> subscribers = new ArrayList<>();
-            return publisher
+        Publisher<Integer> fanOut = publisher
+                    .map(t -> new Item<>(itemIndex.getAndIncrement(), t))
                     .multicast(1)
-                    .liftSync(new Splitter<>(subscribers))
-                    .shareContextOnSubscribe();
-        });
+                    .liftSync(new Splitter<Integer>(subscribers));
         TestPublisherSubscriber<Integer> subscriber1 = new TestPublisherSubscriber<>();
         TestPublisherSubscriber<Integer> subscriber2 = new TestPublisherSubscriber<>();
         toSource(fanOut).subscribe(subscriber1);
         toSource(fanOut).subscribe(subscriber2);
 
-        subscriber1.awaitSubscription().request(2);
+        subscriber1.awaitSubscription().request(3);
         subscriber2.awaitSubscription().request(2);
         assertThat(subscriber1.takeOnNext(2), contains(0, 2));
         assertThat(subscriber2.takeOnNext(2), contains(1, 3));
@@ -53,34 +53,48 @@ class SplitterTest {
         subscriber2.awaitOnComplete();
     }
 
-    private static final class Splitter<T> implements PublisherOperator<T, T> {
-        private final List<PublisherSource.Subscriber<? super T>> subscribers;
-        @Nullable
-        private PublisherSource.Subscriber<? super T> emittingSub;
-        private int emissions;
-        private int emitIndex;
+    private static final class Item<T> {
+        final int index;
+        final T item;
 
-        private Splitter(final List<PublisherSource.Subscriber<? super T>> subscribers) {
+        private Item(final int index, final T item) {
+            this.index = index;
+            this.item = item;
+        }
+
+        @Override
+        public String toString() {
+            return index + ", " + item;
+        }
+    }
+
+    private static final class Splitter<T> implements PublisherOperator<Item<T>, T> {
+        private final List<SplitterSubscriber> subscribers;
+
+        private Splitter(final List<SplitterSubscriber> subscribers) {
             this.subscribers = subscribers;
         }
 
         @Override
-        public PublisherSource.Subscriber<? super T> apply(
+        public PublisherSource.Subscriber<? super Item<T>> apply(
                 final PublisherSource.Subscriber<? super T> subscriber) {
-            SplitterSubscriber newSubscriber = new SplitterSubscriber(subscriber);
+            final SplitterSubscriber newSubscriber;
             synchronized (subscribers) {
+                newSubscriber = new SplitterSubscriber(subscriber, subscribers.size());
                 subscribers.add(newSubscriber);
             }
             return newSubscriber;
         }
 
-        private final class SplitterSubscriber implements PublisherSource.Subscriber<T> {
+        private final class SplitterSubscriber implements PublisherSource.Subscriber<Item<T>> {
             private final PublisherSource.Subscriber<? super T> delegate;
+            private int index;
             @Nullable
             private PublisherSource.Subscription subscription;
 
-            private SplitterSubscriber(final PublisherSource.Subscriber<? super T> delegate) {
+            private SplitterSubscriber(final PublisherSource.Subscriber<? super T> delegate, int index) {
                 this.delegate = delegate;
+                this.index = index;
             }
 
             @Override
@@ -90,7 +104,7 @@ class SplitterTest {
                     private boolean cancelled;
                     @Override
                     public void request(final long n) {
-                        synchronized (subscribers) {
+                        synchronized (subscribers) { // protects subscription, subscribers, index
                             subscription.request(n);
                         }
                     }
@@ -103,7 +117,12 @@ class SplitterTest {
                         cancelled = true;
                         synchronized (subscribers) {
                             try {
-                                subscribers.remove(SplitterSubscriber.this);
+                                final int removeIndex = subscribers.indexOf(SplitterSubscriber.this);
+                                assert removeIndex >= 0;
+                                for (int i = removeIndex + 1; i < subscribers.size(); ++i) {
+                                    --subscribers.get(i).index;
+                                }
+                                subscribers.remove(removeIndex);
                             } finally {
                                 subscription.cancel();
                             }
@@ -113,25 +132,17 @@ class SplitterTest {
             }
 
             @Override
-            public void onNext(final T integer) {
+            public void onNext(final Item<T> item) {
                 assert subscription != null;
                 final boolean emit;
                 synchronized (subscribers) {
-                    if (emittingSub == null) {
-                        emittingSub = subscribers.get(emitIndex++ % subscribers.size());
-                    }
-
-                    emit = emittingSub == this;
+                    emit = (item.index % subscribers.size()) == index;
                     if (!emit) {
                         subscription.request(1);
                     }
-                    if (++emissions > subscribers.size()) {
-                        emittingSub = null;
-                        emissions = 0;
-                    }
                 }
                 if (emit) {
-                    delegate.onNext(integer);
+                    delegate.onNext(item.item);
                 }
             }
 
