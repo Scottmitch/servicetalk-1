@@ -35,7 +35,7 @@ import static io.servicetalk.concurrent.internal.SubscriberUtils.isRequestNValid
 import static io.servicetalk.concurrent.internal.SubscriberUtils.safeCancel;
 import static io.servicetalk.concurrent.internal.SubscriberUtils.safeOnComplete;
 import static io.servicetalk.concurrent.internal.SubscriberUtils.safeOnError;
-import static io.servicetalk.utils.internal.PlatformDependent.newUnboundedSpscQueue;
+import static io.servicetalk.utils.internal.PlatformDependent.newLinkedSpscQueue;
 import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.atomic.AtomicIntegerFieldUpdater.newUpdater;
 
@@ -116,18 +116,11 @@ abstract class TaskBasedAsyncPublisherOperator<T> extends AbstractNoHandleSubscr
         OffloadedSubscriber(final Subscriber<? super T> target,
                             final BooleanSupplier shouldOffload,
                             final io.servicetalk.concurrent.Executor executor) {
-            this(target, shouldOffload, executor, 2);
-        }
-
-        OffloadedSubscriber(final Subscriber<? super T> target,
-                            final BooleanSupplier shouldOffload,
-                            final io.servicetalk.concurrent.Executor executor,
-                            final int publisherSignalQueueInitialCapacity) {
             this.target = target;
             this.shouldOffload = shouldOffload;
             this.executor = executor;
             // Queue is bounded by request-n
-            signals = newUnboundedSpscQueue(publisherSignalQueueInitialCapacity);
+            signals = newLinkedSpscQueue();
         }
 
         private boolean shouldOffload() {

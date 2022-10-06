@@ -35,8 +35,8 @@ import static io.servicetalk.concurrent.internal.ConcurrentUtils.releaseLock;
 import static io.servicetalk.concurrent.internal.ConcurrentUtils.tryAcquireLock;
 import static io.servicetalk.concurrent.internal.SubscriberUtils.isRequestNValid;
 import static io.servicetalk.concurrent.internal.ThrowableUtils.catchUnexpected;
-import static io.servicetalk.utils.internal.PlatformDependent.newUnboundedSpscQueue;
-import static io.servicetalk.utils.internal.PlatformDependent.throwException;
+import static io.servicetalk.utils.internal.PlatformDependent.newLinkedSpscQueue;
+import static io.servicetalk.utils.internal.ThrowableUtils.throwException;
 
 abstract class MulticastLeafSubscriber<T> implements Subscriber<T>, Subscription {
     @SuppressWarnings("rawtypes")
@@ -147,10 +147,10 @@ abstract class MulticastLeafSubscriber<T> implements Subscriber<T>, Subscription
     public final void onNext(@Nullable final T t) {
         final Subscriber<? super T> subscriber = subscriber();
         if (subscriber == null) {
-            getOrCreateSignalQueue(8).add(wrapNull(t));
+            getOrCreateSignalQueue().add(wrapNull(t));
             drainSignalQueueSupplier(null, this::subscriber);
         } else if (hasSignalsQueued()) {
-            getOrCreateSignalQueue(8).add(wrapNull(t));
+            getOrCreateSignalQueue().add(wrapNull(t));
             drainSignalQueue(subscriber);
         } else if (tryAcquireLock(emittingLockUpdater, this)) {
             // The queue is empty, and we acquired the lock so we can try to directly deliver to target
@@ -170,11 +170,11 @@ abstract class MulticastLeafSubscriber<T> implements Subscriber<T>, Subscription
                 }
             } else {
                 releaseLock(emittingLockUpdater, this);
-                getOrCreateSignalQueue(8).add(wrapNull(t));
+                getOrCreateSignalQueue().add(wrapNull(t));
                 drainSignalQueue(subscriber);
             }
         } else {
-            getOrCreateSignalQueue(8).add(wrapNull(t));
+            getOrCreateSignalQueue().add(wrapNull(t));
             drainSignalQueue(subscriber);
         }
     }
@@ -197,9 +197,9 @@ abstract class MulticastLeafSubscriber<T> implements Subscriber<T>, Subscription
         }
     }
 
-    private Queue<Object> getOrCreateSignalQueue(int size) {
+    private Queue<Object> getOrCreateSignalQueue() {
         if (signalQueue == null) {
-            signalQueue = newUnboundedSpscQueue(size);
+            signalQueue = newLinkedSpscQueue();
         }
         return signalQueue;
     }
@@ -209,16 +209,16 @@ abstract class MulticastLeafSubscriber<T> implements Subscriber<T>, Subscription
                             Function<Throwable, TerminalNotification> terminalFunc) {
         final Subscriber<? super T> subscriber = subscriber();
         if (subscriber == null) {
-            getOrCreateSignalQueue(1).add(terminalFunc.apply(t));
+            getOrCreateSignalQueue().add(terminalFunc.apply(t));
             drainSignalQueueSupplier(null, this::subscriber);
         } else if (hasSignalsQueued()) {
-            getOrCreateSignalQueue(1).add(terminalFunc.apply(t));
+            getOrCreateSignalQueue().add(terminalFunc.apply(t));
             drainSignalQueue(subscriber);
         } else if (tryAcquireLock(emittingLockUpdater, this)) {
             emitter.accept(t, subscriber);
             // poison the lock
         } else {
-            getOrCreateSignalQueue(1).add(terminalFunc.apply(t));
+            getOrCreateSignalQueue().add(terminalFunc.apply(t));
             drainSignalQueue(subscriber);
         }
     }

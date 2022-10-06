@@ -29,8 +29,7 @@ import static io.servicetalk.concurrent.api.SubscriberApiUtils.unwrapNullUncheck
 import static io.servicetalk.concurrent.api.SubscriberApiUtils.wrapNull;
 import static io.servicetalk.concurrent.internal.ConcurrentUtils.releaseLock;
 import static io.servicetalk.concurrent.internal.ConcurrentUtils.tryAcquireLock;
-import static io.servicetalk.utils.internal.PlatformDependent.newUnboundedSpscQueue;
-import static java.lang.Math.min;
+import static io.servicetalk.utils.internal.PlatformDependent.newLinkedSpscQueue;
 
 final class PublisherFlatMapConcatUtils {
     private PublisherFlatMapConcatUtils() {
@@ -38,13 +37,13 @@ final class PublisherFlatMapConcatUtils {
 
     static <T, R> Publisher<R> flatMapConcatSingle(final Publisher<T> publisher,
                                                    final Function<? super T, ? extends Single<? extends R>> mapper) {
-        return defer(() -> publisher.flatMapMergeSingle(new OrderedMapper<>(mapper, newUnboundedSpscQueue(4)))
+        return defer(() -> publisher.flatMapMergeSingle(new OrderedMapper<>(mapper, newLinkedSpscQueue()))
                 .shareContextOnSubscribe());
     }
 
     static <T, R> Publisher<R> flatMapConcatSingleDelayError(
             final Publisher<T> publisher, final Function<? super T, ? extends Single<? extends R>> mapper) {
-        return defer(() -> publisher.flatMapMergeSingleDelayError(new OrderedMapper<>(mapper, newUnboundedSpscQueue(4)))
+        return defer(() -> publisher.flatMapMergeSingleDelayError(new OrderedMapper<>(mapper, newLinkedSpscQueue()))
                 .shareContextOnSubscribe());
     }
 
@@ -52,8 +51,7 @@ final class PublisherFlatMapConcatUtils {
                                                    final Function<? super T, ? extends Single<? extends R>> mapper,
                                                    final int maxConcurrency) {
         return defer(() ->
-                publisher.flatMapMergeSingle(new OrderedMapper<>(mapper,
-                                newUnboundedSpscQueue(min(8, maxConcurrency))), maxConcurrency)
+                publisher.flatMapMergeSingle(new OrderedMapper<>(mapper, newLinkedSpscQueue()), maxConcurrency)
                         .shareContextOnSubscribe());
     }
 
@@ -61,9 +59,8 @@ final class PublisherFlatMapConcatUtils {
             final Publisher<T> publisher, final Function<? super T, ? extends Single<? extends R>> mapper,
             final int maxConcurrency) {
         return defer(() ->
-                publisher.flatMapMergeSingleDelayError(new OrderedMapper<>(mapper,
-                                newUnboundedSpscQueue(min(8, maxConcurrency))), maxConcurrency)
-                        .shareContextOnSubscribe());
+                publisher.flatMapMergeSingleDelayError(new OrderedMapper<>(mapper, newLinkedSpscQueue()),
+                                maxConcurrency).shareContextOnSubscribe());
     }
 
     private static final class OrderedMapper<T, R> implements Function<T, Single<R>> {

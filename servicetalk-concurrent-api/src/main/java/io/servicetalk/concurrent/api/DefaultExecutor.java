@@ -22,6 +22,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
+import java.util.concurrent.LinkedTransferQueue;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.RejectedExecutionHandler;
 import java.util.concurrent.ScheduledExecutorService;
@@ -63,7 +64,7 @@ final class DefaultExecutor extends AbstractExecutor implements Consumer<Runnabl
 
     DefaultExecutor(int coreSize, int maxSize, ThreadFactory threadFactory) {
         this(new ThreadPoolExecutor(coreSize, maxSize, DEFAULT_KEEP_ALIVE_TIME_SECONDS, SECONDS,
-                new SynchronousQueue<>(), threadFactory, DEFAULT_REJECTION_HANDLER));
+                new LinkedTransferQueue<>(), threadFactory, DEFAULT_REJECTION_HANDLER));
     }
 
     DefaultExecutor(java.util.concurrent.Executor jdkExecutor) {

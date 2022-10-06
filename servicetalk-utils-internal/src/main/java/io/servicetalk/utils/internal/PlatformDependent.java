@@ -1,5 +1,5 @@
 /*
- * Copyright © 2018 Apple Inc. and the ServiceTalk project authors
+ * Copyright © 2018, 2022 Apple Inc. and the ServiceTalk project authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,16 +34,19 @@ import org.jctools.queues.MpscChunkedArrayQueue;
 import org.jctools.queues.MpscLinkedQueue;
 import org.jctools.queues.MpscUnboundedArrayQueue;
 import org.jctools.queues.SpscChunkedArrayQueue;
+import org.jctools.queues.SpscLinkedQueue;
 import org.jctools.queues.SpscUnboundedArrayQueue;
 import org.jctools.queues.atomic.MpscGrowableAtomicArrayQueue;
 import org.jctools.queues.atomic.MpscLinkedAtomicQueue;
 import org.jctools.queues.atomic.MpscUnboundedAtomicArrayQueue;
 import org.jctools.queues.atomic.SpscGrowableAtomicArrayQueue;
+import org.jctools.queues.atomic.SpscLinkedAtomicQueue;
 import org.jctools.queues.atomic.SpscUnboundedAtomicArrayQueue;
 import org.jctools.queues.ea.unpadded.MpscChunkedUnpaddedArrayQueue;
 import org.jctools.queues.ea.unpadded.MpscLinkedUnpaddedQueue;
 import org.jctools.queues.ea.unpadded.MpscUnboundedUnpaddedArrayQueue;
 import org.jctools.queues.ea.unpadded.SpscChunkedUnpaddedArrayQueue;
+import org.jctools.queues.ea.unpadded.SpscLinkedUnpaddedQueue;
 import org.jctools.queues.ea.unpadded.SpscUnboundedUnpaddedArrayQueue;
 import org.jctools.util.Pow2;
 import org.jctools.util.UnsafeAccess;
@@ -153,15 +156,15 @@ public final class PlatformDependent {
     }
 
     /**
-    * Raises an exception bypassing compiler checks for checked exceptions.
-    *
-    * @param t The {@link Throwable} to throw.
-    * @param <T> The expected type
-    * @return nothing actually will be returned from this method because it rethrows the specified exception. Making
-    * this method return an arbitrary type makes the caller method easier as they do not have to add a return statement
-    * after calling this method.
-    * @deprecated Use {@link ThrowableUtils#throwException(Throwable)}.
-    */
+     * Raises an exception bypassing compiler checks for checked exceptions.
+     *
+     * @param t The {@link Throwable} to throw.
+     * @param <T> The expected type
+     * @return nothing actually will be returned from this method because it rethrows the specified exception. Making
+     * this method return an arbitrary type makes the caller method easier as they do not have to add a return statement
+     * after calling this method.
+     * @deprecated Use {@link ThrowableUtils#throwException(Throwable)}.
+     */
     @Deprecated
     public static <T> T throwException(final Throwable t) { // FIXME: 0.43 - remove deprecated method
         return ThrowableUtils.throwException(t);
@@ -270,6 +273,16 @@ public final class PlatformDependent {
         return Queues.newUnboundedSpscQueue(initialCapacity);
     }
 
+    /**
+     * Create a new unbounded {@link Queue} that uses a linked data structure which is safe to use for single producer
+     * (one thread!) and a single consumer (one thread!).
+     * @param <T> Type of items stored in the queue.
+     * @return A new unbounded SPSC {@link Queue}.
+     */
+    public static <T> Queue<T> newLinkedSpscQueue() {
+        return Queues.newLinkedSpscQueue();
+    }
+
     private static final class Queues {
         private static final boolean USE_UNSAFE_QUEUES;
         private static final boolean USE_UNPADDED_QUEUES;
@@ -326,24 +339,24 @@ public final class PlatformDependent {
             final int capacity = max(min(maxCapacity, MAX_ALLOWED_QUEUE_CAPACITY), MIN_MAX_MPSC_CAPACITY);
             return USE_UNSAFE_QUEUES ?
                     USE_UNPADDED_QUEUES ?
-                        new MpscChunkedUnpaddedArrayQueue<>(initialCap, capacity) :
-                        new MpscChunkedArrayQueue<>(initialCap, capacity)
+                            new MpscChunkedUnpaddedArrayQueue<>(initialCap, capacity) :
+                            new MpscChunkedArrayQueue<>(initialCap, capacity)
                     : new MpscGrowableAtomicArrayQueue<>(initialCap, capacity);
         }
 
         static <T> Queue<T> newUnboundedMpscQueue(final int initialCapacity) {
             return USE_UNSAFE_QUEUES ?
                     USE_UNPADDED_QUEUES ?
-                        new MpscUnboundedUnpaddedArrayQueue<>(max(MIN_ALLOWED_MPSC_CHUNK_SIZE, initialCapacity)) :
-                        new MpscUnboundedArrayQueue<>(max(MIN_ALLOWED_MPSC_CHUNK_SIZE, initialCapacity))
+                            new MpscUnboundedUnpaddedArrayQueue<>(max(MIN_ALLOWED_MPSC_CHUNK_SIZE, initialCapacity)) :
+                            new MpscUnboundedArrayQueue<>(max(MIN_ALLOWED_MPSC_CHUNK_SIZE, initialCapacity))
                     : new MpscUnboundedAtomicArrayQueue<>(max(MIN_ALLOWED_MPSC_CHUNK_SIZE, initialCapacity));
         }
 
         static <T> Queue<T> newUnboundedLinkedMpscQueue() {
             return USE_UNSAFE_QUEUES ?
                     USE_UNPADDED_QUEUES ?
-                        new MpscLinkedUnpaddedQueue<>() :
-                        new MpscLinkedQueue<>()
+                            new MpscLinkedUnpaddedQueue<>() :
+                            new MpscLinkedQueue<>()
                     : new MpscLinkedAtomicQueue<>();
         }
 
@@ -355,17 +368,25 @@ public final class PlatformDependent {
             final int capacity = max(min(maxCapacity, MAX_ALLOWED_QUEUE_CAPACITY), MIN_MAX_SPSC_CAPACITY);
             return USE_UNSAFE_QUEUES ?
                     USE_UNPADDED_QUEUES ?
-                        new SpscChunkedUnpaddedArrayQueue<>(initialCap, capacity) :
-                        new SpscChunkedArrayQueue<>(initialCap, capacity)
+                            new SpscChunkedUnpaddedArrayQueue<>(initialCap, capacity) :
+                            new SpscChunkedArrayQueue<>(initialCap, capacity)
                     : new SpscGrowableAtomicArrayQueue<>(initialCap, capacity);
         }
 
         static <T> Queue<T> newUnboundedSpscQueue(final int initialCapacity) {
             return USE_UNSAFE_QUEUES ?
                     USE_UNPADDED_QUEUES ?
-                        new SpscUnboundedUnpaddedArrayQueue<>(initialCapacity) :
-                        new SpscUnboundedArrayQueue<>(initialCapacity)
+                            new SpscUnboundedUnpaddedArrayQueue<>(initialCapacity) :
+                            new SpscUnboundedArrayQueue<>(initialCapacity)
                     : new SpscUnboundedAtomicArrayQueue<>(initialCapacity);
+        }
+
+        static <T> Queue<T> newLinkedSpscQueue() {
+            return USE_UNSAFE_QUEUES ?
+                    USE_UNPADDED_QUEUES ?
+                            new SpscLinkedUnpaddedQueue<>() :
+                            new SpscLinkedQueue<>()
+                    : new SpscLinkedAtomicQueue<>();
         }
     }
 }
