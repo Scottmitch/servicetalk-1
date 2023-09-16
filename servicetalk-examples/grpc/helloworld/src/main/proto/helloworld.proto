@@ -33,6 +33,43 @@ message HelloRequest {
 
 // The response message containing the greetings
 message HelloReply {
-    string message = 1;
-    map<string, string> myMap = 2;
+  message Result {
+    ContentItemReference target = 5;
+    repeated TicketInfo tickets = 7;
+
+    // removed
+    reserved 6; // @removed 2023-08-30.  Use tickets=7 instead.  Was:  repeated ticket.Ticket tickets = 6
+  }
+
+  uint32 ver = 1;
+
+  repeated Result results = 5;
+
+  // svc
+  RequestContext context = 14;
+  ServiceExtensions extensions = 15;
+}
+
+message ContentItemReference {
+  string foo1 = 1;
+}
+
+message TicketInfo {
+  string foo2 = 1;
+}
+
+message Result {
+  string foo3 = 1;
+}
+
+message RequestContext {
+  string foo4 = 1;
+}
+
+message ServiceExtensions {
+  uint64 elapsed_time_nanos = 1;
+  uint64 auth_time_nanos = 2;
+  map<string, string> others = 7;
+  optional string env = 8;
+  optional string response_timestamp = 9;
 }
