@@ -32,7 +32,9 @@ public final class HelloWorldClient {
     public static void main(String... args) throws Exception {
         try (GreeterClient client = GrpcClients.forAddress("localhost", 8080).build(new ClientFactory())) {
             client.sayHello(HelloRequest.newBuilder().setName("World").build())
-                    .whenOnSuccess(System.out::println)
+                    .whenOnSuccess(reply -> {
+                        System.out.println(reply);
+                    })
             // This example is demonstrating asynchronous execution, but needs to prevent the main thread from exiting
             // before the response has been processed. This isn't typical usage for an asynchronous API but is useful
             // for demonstration purposes.

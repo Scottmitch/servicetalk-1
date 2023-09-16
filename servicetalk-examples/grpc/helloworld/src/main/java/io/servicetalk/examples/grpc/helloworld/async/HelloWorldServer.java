@@ -33,7 +33,10 @@ public final class HelloWorldServer {
     public static void main(String... args) throws Exception {
         GrpcServers.forPort(8080)
                 .listenAndAwait((GreeterService) (ctx, request) ->
-                        succeeded(HelloReply.newBuilder().setMessage("Hello " + request.getName()).build()))
+                        succeeded(HelloReply.newBuilder()
+                                .putMyMap("foo", "")
+                                .setMessage("Hello " + request.getName())
+                                .build()))
                 .awaitShutdown();
     }
 }
