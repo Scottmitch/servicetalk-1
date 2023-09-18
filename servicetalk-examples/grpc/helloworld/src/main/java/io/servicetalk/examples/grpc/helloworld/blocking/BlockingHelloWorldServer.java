@@ -19,14 +19,13 @@ import io.servicetalk.grpc.netty.GrpcServers;
 
 import io.grpc.examples.helloworld.Greeter.BlockingGreeterService;
 import io.grpc.examples.helloworld.HelloReply;
-import io.grpc.examples.helloworld.ServiceExtensions;
 
 public final class BlockingHelloWorldServer {
     public static void main(String[] args) throws Exception {
         GrpcServers.forPort(8080)
                 .listenAndAwait((BlockingGreeterService) (ctx, request) ->
                         HelloReply.newBuilder()
-                                .setExtensions(ServiceExtensions.newBuilder().putOthers("foo", "").build())
+                                .putOthers("foo", "")
                                 .build())
                 .awaitShutdown();
     }

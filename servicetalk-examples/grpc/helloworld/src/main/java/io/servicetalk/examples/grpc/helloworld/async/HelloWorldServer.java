@@ -19,7 +19,6 @@ import io.servicetalk.grpc.netty.GrpcServers;
 
 import io.grpc.examples.helloworld.Greeter.GreeterService;
 import io.grpc.examples.helloworld.HelloReply;
-import io.grpc.examples.helloworld.ServiceExtensions;
 
 import static io.servicetalk.concurrent.api.Single.succeeded;
 
@@ -35,10 +34,7 @@ public final class HelloWorldServer {
         GrpcServers.forPort(8080)
                 .listenAndAwait((GreeterService) (ctx, request) ->
                         succeeded(HelloReply.newBuilder()
-                                .setExtensions(ServiceExtensions.newBuilder()
-                                        .putOthers("foo", "")
-                                        .setEnv("env")
-                                        .build())
+                                .putOthers("foo", "")
                                 .build()))
                 .awaitShutdown();
     }
